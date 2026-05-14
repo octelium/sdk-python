@@ -1,0 +1,21 @@
+[build-system]
+requires = ['setuptools>=68', 'wheel']
+build-backend = 'setuptools.backends.legacy:build'
+
+[project]
+name = 'octelium-apis'
+version = '1.0.0.dev202605143'
+description = 'Octelium Protobuf APIs'
+authors = [{name = 'Octelium', email = 'contact@octelium.com'}]
+license = {text = 'Apache-2.0'}
+requires-python = '>=3.10'
+dependencies = ['betterproto>=2.0.0b7', 'grpclib>=0.4.7']
+keywords = ['octelium', 'grpc', 'protobuf', 'sdk']
+
+[project.urls]
+Homepage = 'https://octelium.com'
+Repository = 'https://github.com/octelium/sdk-python'
+
+[tool.setuptools.packages.find]
+where = ['.']
+include = ['octelium*']

@@ -15,15 +15,16 @@ from grpclib.const import Status
 from grpclib.events import SendRequest, listen
 from grpclib.exceptions import GRPCError
 
-from octelium.apis.main.authv1 import (
+from octelium.api.main.auth.v1 import (
     AuthenticateWithAuthenticationTokenRequest,
     AuthenticateWithRefreshTokenRequest,
     LogoutRequest,
-    MainServiceStub as _AuthStub,
+    MainServiceStub as AuthStub,
     SessionToken,
 )
-from octelium.apis.main.corev1 import MainServiceStub as _CoreStub
-from octelium.apis.main.userv1 import MainServiceStub as _UserStub
+from octelium.api.main.core.v1 import MainServiceStub as CoreStub
+from octelium.api.main.user.v1 import MainServiceStub as UserStub
+from octelium.api.main.cordium.v1 import MainServiceStub as CordiumStub
 
 __all__ = [
     "OcteliumClient",
@@ -91,13 +92,14 @@ class OcteliumClient:
         self._session_token_set_at: Optional[float] = None
         self._oauth2_cache: Optional[_OAuth2Cache] = None
 
-        self._refresh_lock: Optional[asyncio.Lock] = None
-        self._oauth2_lock: Optional[asyncio.Lock] = None
-        self._close_lock: Optional[asyncio.Lock] = None
+        self._refresh_lock = asyncio.Lock()
+        self._oauth2_lock = asyncio.Lock()
+        self._close_lock = asyncio.Lock()
         self._is_closed = False
 
-        self._core_v1: Optional[_CoreStub] = None
-        self._user_v1: Optional[_UserStub] = None
+        self._core_v1: Optional[CoreStub] = None
+        self._user_v1: Optional[UserStub] = None
+        self._cordium_v1: Optional[CordiumStub] = None
         self._oauth_session: Optional[aiohttp.ClientSession] = None
 
         ssl_ctx = self._new_ssl_context(config)
@@ -110,15 +112,14 @@ class OcteliumClient:
         self._auth_channel = Channel(host=host, port=config.api_port, ssl=ssl_ctx)
         listen(self._auth_channel, SendRequest, self._on_auth_send_request)
 
-        self._auth_stub = _AuthStub(self._auth_channel)
+        self._auth_stub = AuthStub(self._auth_channel)
 
     @staticmethod
     def _new_ssl_context(config: OcteliumClientConfig) -> ssl.SSLContext:
         ctx = ssl.create_default_context()
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
 
-        insecure = config.insecure_tls or os.environ.get("OCTELIUM_INSECURE_TLS", "").lower() == "true"
-        if insecure:
+        if config.insecure_tls:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 
@@ -233,9 +234,6 @@ class OcteliumClient:
                 assert self._session_token is not None
                 return self._session_token.access_token
 
-            if self._refresh_lock is None:
-                self._refresh_lock = asyncio.Lock()
-
             async with self._refresh_lock:
                 if not self._needs_new_access_token():
                     assert self._session_token is not None
@@ -309,9 +307,6 @@ class OcteliumClient:
 
         if self._oauth2_cache is not None and now < self._oauth2_cache.expires_at - margin:
             return self._oauth2_cache.access_token
-
-        if self._oauth2_lock is None:
-            self._oauth2_lock = asyncio.Lock()
 
         async with self._oauth2_lock:
             now = time.monotonic()
@@ -400,9 +395,6 @@ class OcteliumClient:
         return AuthenticatedHTTPClient(self, timeout=timeout)
 
     async def close(self) -> None:
-        if self._close_lock is None:
-            self._close_lock = asyncio.Lock()
-
         async with self._close_lock:
             if self._is_closed:
                 return
@@ -435,18 +427,25 @@ class OcteliumClient:
         await self.close()
 
     @property
-    def core_v1(self) -> _CoreStub:
+    def core_v1(self) -> CoreStub:
         self._ensure_open()
         if self._core_v1 is None:
-            self._core_v1 = _CoreStub(self._channel)
+            self._core_v1 = CoreStub(self._channel)
         return self._core_v1
 
     @property
-    def user_v1(self) -> _UserStub:
+    def user_v1(self) -> UserStub:
         self._ensure_open()
         if self._user_v1 is None:
-            self._user_v1 = _UserStub(self._channel)
+            self._user_v1 = UserStub(self._channel)
         return self._user_v1
+
+    @property
+    def cordium_v1(self) -> CordiumStub:
+        self._ensure_open()
+        if self._cordium_v1 is None:
+            self._cordium_v1 = CordiumStub(self._channel)
+        return self._cordium_v1
 
 
 class AuthenticatedHTTPClient:
@@ -459,7 +458,7 @@ class AuthenticatedHTTPClient:
         self._client = client
         self._timeout = timeout or aiohttp.ClientTimeout(total=30)
         self._session: Optional[aiohttp.ClientSession] = None
-        self._session_lock: Optional[asyncio.Lock] = None
+        self._session_lock = asyncio.Lock()
         self._closed = False
 
     def _ensure_open(self) -> None:
@@ -468,14 +467,12 @@ class AuthenticatedHTTPClient:
 
     async def _get_session(self) -> aiohttp.ClientSession:
         self._ensure_open()
-        if self._session_lock is None:
-            self._session_lock = asyncio.Lock()
 
         async with self._session_lock:
             if self._session is None or self._session.closed:
                 self._session = aiohttp.ClientSession(timeout=self._timeout)
 
-        return self._session
+            return self._session
 
     async def request(
         self,

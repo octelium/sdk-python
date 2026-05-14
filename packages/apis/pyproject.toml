@@ -1,10 +1,10 @@
 [build-system]
-requires = ['setuptools>=68', 'wheel']
-build-backend = 'setuptools.backends.legacy:build'
+requires = ['setuptools>=68']
+build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'octelium-apis'
-version = '1.0.0.dev202605143'
+version = '1.0.0.dev202605144'
 description = 'Octelium Protobuf APIs'
 authors = [{name = 'Octelium', email = 'contact@octelium.com'}]
 license = {text = 'Apache-2.0'}

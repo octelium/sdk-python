@@ -4,7 +4,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'octelium-apis'
-version = '1.0.0.dev202605144'
+version = '1.0.0.dev202605147'
 description = 'Octelium Protobuf APIs'
 authors = [{name = 'Octelium', email = 'contact@octelium.com'}]
 license = {text = 'Apache-2.0'}
@@ -19,3 +19,7 @@ Repository = 'https://github.com/octelium/sdk-python'
 [tool.setuptools.packages.find]
 where = ['.']
 include = ['octelium*']
+
+[tool.setuptools.package-data]
+"octelium" = ['py.typed']
+"octelium.*" = ['*.pyi']

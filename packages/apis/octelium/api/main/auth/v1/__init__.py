@@ -27,6 +27,12 @@ if TYPE_CHECKING:
 class ClientLoginRequestApiVersion(betterproto.Enum):
     UNKNOWN_VERSION = 0
     V1 = 1
+    V2 = 2
+    """
+    Clients keep sending V1 until Clusters that reject unknown API versions
+     have aged out. A V1 request carrying a codeChallenge is normalized to V2
+     by the Cluster.
+    """
 
 
 class RegisterDeviceBeginRequestInfoOsType(betterproto.Enum):
@@ -65,11 +71,18 @@ class ClientLoginRequest(betterproto.Message):
     api_version: "ClientLoginRequestApiVersion" = betterproto.enum_field(1)
     callback_port: int = betterproto.uint32_field(2)
     callback_suffix: str = betterproto.string_field(3)
+    code_challenge: bytes = betterproto.bytes_field(4)
+    """
+    CodeChallenge is the SHA256 digest of the 32 random bytes of the code
+     verifier. This is S256 over the raw verifier bytes, NOT over the base64url
+     encoding used by RFC 7636.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClientLoginResponse(betterproto.Message):
     authentication_token: str = betterproto.string_field(1)
+    code_challenge: bytes = betterproto.bytes_field(2)
 
 
 @dataclass(eq=False, repr=False)
@@ -162,6 +175,11 @@ class RegisterDeviceFinishResponse(betterproto.Message):
 class AuthenticateWithAuthenticationTokenRequest(betterproto.Message):
     authentication_token: str = betterproto.string_field(1)
     scopes: List[str] = betterproto.string_field(2)
+    code_verifier: bytes = betterproto.bytes_field(3)
+    """
+    CodeVerifier is required if and only if the Credential is bound to a code
+     challenge. Supplying it for a Credential that is not bound is rejected.
+    """
 
 
 @dataclass(eq=False, repr=False)
@@ -265,6 +283,7 @@ class RegisterAuthenticatorBeginRequestPreChallengeTpm(betterproto.Message):
     ) = betterproto.message_field(2)
     ek_certificate_der: bytes = betterproto.bytes_field(3, group="ekType")
     ek_public_key: bytes = betterproto.bytes_field(4, group="ekType")
+    ek_certificate_intermediates_der: List[bytes] = betterproto.bytes_field(5)
 
 
 @dataclass(eq=False, repr=False)
@@ -446,6 +465,66 @@ class AuthenticateWithPasskeyBeginResponse(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class AuthenticateWithPasskeyRequest(betterproto.Message):
     response: str = betterproto.string_field(1)
+
+
+@dataclass(eq=False, repr=False)
+class RunDeviceProbeBeginRequest(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class RunDeviceProbeBeginResponse(betterproto.Message):
+    attempt_uid: str = betterproto.string_field(1)
+    probes: List["DeviceProbe"] = betterproto.message_field(2)
+
+
+@dataclass(eq=False, repr=False)
+class DeviceProbe(betterproto.Message):
+    probe_id: str = betterproto.string_field(1)
+    require_elevation: bool = betterproto.bool_field(2)
+    run_command: "DeviceProbeRunCommand" = betterproto.message_field(3, group="type")
+    read_file: "DeviceProbeReadFile" = betterproto.message_field(4, group="type")
+    read_registry: "DeviceProbeReadRegistry" = betterproto.message_field(
+        5, group="type"
+    )
+
+
+@dataclass(eq=False, repr=False)
+class DeviceProbeRunCommand(betterproto.Message):
+    command: str = betterproto.string_field(1)
+    args: List[str] = betterproto.string_field(2)
+    timeout_seconds: int = betterproto.uint32_field(3)
+    max_output_bytes: int = betterproto.uint32_field(4)
+
+
+@dataclass(eq=False, repr=False)
+class DeviceProbeReadFile(betterproto.Message):
+    path: str = betterproto.string_field(1)
+    max_bytes: int = betterproto.uint32_field(2)
+
+
+@dataclass(eq=False, repr=False)
+class DeviceProbeReadRegistry(betterproto.Message):
+    key: str = betterproto.string_field(1)
+    name: str = betterproto.string_field(2)
+
+
+@dataclass(eq=False, repr=False)
+class DeviceProbeResult(betterproto.Message):
+    probe_id: str = betterproto.string_field(1)
+    output: bytes = betterproto.bytes_field(2, group="type")
+    error: str = betterproto.string_field(3, group="type")
+
+
+@dataclass(eq=False, repr=False)
+class RunDeviceProbeFinishRequest(betterproto.Message):
+    attempt_uid: str = betterproto.string_field(1)
+    results: List["DeviceProbeResult"] = betterproto.message_field(2)
+
+
+@dataclass(eq=False, repr=False)
+class RunDeviceProbeFinishResponse(betterproto.Message):
+    pass
 
 
 class MainServiceStub(betterproto.ServiceStub):
@@ -755,6 +834,40 @@ class MainServiceStub(betterproto.ServiceStub):
             metadata=metadata,
         )
 
+    async def run_device_probe_begin(
+        self,
+        run_device_probe_begin_request: "RunDeviceProbeBeginRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "RunDeviceProbeBeginResponse":
+        return await self._unary_unary(
+            "/octelium.api.main.auth.v1.MainService/RunDeviceProbeBegin",
+            run_device_probe_begin_request,
+            RunDeviceProbeBeginResponse,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def run_device_probe_finish(
+        self,
+        run_device_probe_finish_request: "RunDeviceProbeFinishRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "RunDeviceProbeFinishResponse":
+        return await self._unary_unary(
+            "/octelium.api.main.auth.v1.MainService/RunDeviceProbeFinish",
+            run_device_probe_finish_request,
+            RunDeviceProbeFinishResponse,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
 
 class MainServiceBase(ServiceBase):
 
@@ -850,6 +963,16 @@ class MainServiceBase(ServiceBase):
     async def authenticate_with_passkey(
         self, authenticate_with_passkey_request: "AuthenticateWithPasskeyRequest"
     ) -> "SessionToken":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def run_device_probe_begin(
+        self, run_device_probe_begin_request: "RunDeviceProbeBeginRequest"
+    ) -> "RunDeviceProbeBeginResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def run_device_probe_finish(
+        self, run_device_probe_finish_request: "RunDeviceProbeFinishRequest"
+    ) -> "RunDeviceProbeFinishResponse":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def __rpc_authenticate_with_authentication_token(
@@ -992,6 +1115,22 @@ class MainServiceBase(ServiceBase):
         response = await self.authenticate_with_passkey(request)
         await stream.send_message(response)
 
+    async def __rpc_run_device_probe_begin(
+        self,
+        stream: "grpclib.server.Stream[RunDeviceProbeBeginRequest, RunDeviceProbeBeginResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.run_device_probe_begin(request)
+        await stream.send_message(response)
+
+    async def __rpc_run_device_probe_finish(
+        self,
+        stream: "grpclib.server.Stream[RunDeviceProbeFinishRequest, RunDeviceProbeFinishResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.run_device_probe_finish(request)
+        await stream.send_message(response)
+
     def __mapping__(self) -> Dict[str, grpclib.const.Handler]:
         return {
             "/octelium.api.main.auth.v1.MainService/AuthenticateWithAuthenticationToken": grpclib.const.Handler(
@@ -1101,5 +1240,17 @@ class MainServiceBase(ServiceBase):
                 grpclib.const.Cardinality.UNARY_UNARY,
                 AuthenticateWithPasskeyRequest,
                 SessionToken,
+            ),
+            "/octelium.api.main.auth.v1.MainService/RunDeviceProbeBegin": grpclib.const.Handler(
+                self.__rpc_run_device_probe_begin,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                RunDeviceProbeBeginRequest,
+                RunDeviceProbeBeginResponse,
+            ),
+            "/octelium.api.main.auth.v1.MainService/RunDeviceProbeFinish": grpclib.const.Handler(
+                self.__rpc_run_device_probe_finish,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                RunDeviceProbeFinishRequest,
+                RunDeviceProbeFinishResponse,
             ),
         }

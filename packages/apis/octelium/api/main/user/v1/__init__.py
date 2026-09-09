@@ -123,6 +123,11 @@ class ServiceSpecType(betterproto.Enum):
     GRPC = 8
     WEB = 9
     DNS = 10
+    SOCKS5 = 11
+    RDP_WEB = 12
+    MCP = 13
+    LLM = 14
+    RDP = 15
 
 
 class SetServiceConfigsResponseL3Mode(betterproto.Enum):
@@ -238,6 +243,9 @@ class ConnectRequestInitialize(betterproto.Message):
 
     e_ssh_port: int = betterproto.int32_field(7)
     """Port is the listen port of the embedded SSH server"""
+
+    e_socks5_enable: bool = betterproto.bool_field(8)
+    e_socks5_port: int = betterproto.int32_field(9)
 
 
 @dataclass(eq=False, repr=False)
@@ -474,6 +482,7 @@ class ServiceList(betterproto.Message):
 class ListServiceOptions(betterproto.Message):
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
     namespace: str = betterproto.string_field(2)
+    type: "ServiceSpecType" = betterproto.enum_field(3)
 
 
 @dataclass(eq=False, repr=False)

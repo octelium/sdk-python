@@ -4,7 +4,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'octelium-apis'
-version = '1.0.0'
+version = '1.0.1'
 description = 'Octelium Protobuf APIs'
 authors = [{name = 'Octelium', email = 'contact@octelium.com'}]
 license = {text = 'Apache-2.0'}

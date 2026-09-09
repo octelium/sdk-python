@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
 
 class UserSpecType(betterproto.Enum):
+    """Type is the type of the User"""
+
     TYPE_UNKNOWN = 0
     """TYPE_UNKNOWN is reserved. Not used by any User."""
 
@@ -40,7 +42,17 @@ class UserSpecType(betterproto.Enum):
 
 
 class ServiceSpecMode(betterproto.Enum):
+    """
+    Mode is the application-layer protocol understood by the proxy
+     implementing the Service
+    """
+
     MODE_UNSET = 0
+    """
+    MODE_UNSET is the default value. The Cluster automatically decides the
+     mode using the scheme of the Upstream's URL.
+    """
+
     TCP = 1
     """TCP is the TCP mode. This is the default mode if not explicitly set."""
 
@@ -75,9 +87,44 @@ class ServiceSpecMode(betterproto.Enum):
     DNS = 10
     """DNS is the DNS mode"""
 
+    SOCKS5 = 11
+    """SOCKS5 is the SOCKS5 proxy mode"""
+
+    RDP_WEB = 12
+    """
+    RDP_WEB is the browser-based RDP mode. It provides clientless RDP
+     access for HUMAN Users to upstream RDP servers directly from their
+     browsers.
+    """
+
+    MCP = 13
+    """
+    MCP is the Model Context Protocol mode. MCP Services are HTTP-based:
+     they reuse the entire HTTP dataplane and additionally understand the
+     MCP JSON-RPC semantics for access control, access logging and metrics.
+    """
+
+    LLM = 14
+    """
+    LLM is the LLM gateway mode. LLM Services are HTTP-based: they reuse
+     the entire HTTP dataplane and additionally understand the inference
+     API semantics (i.e. the operation, the model, the streaming mode and
+     the token usage) for access control, access logging and metrics.
+    """
+
+    RDP = 15
+    """RDP is the RDP mode"""
+
 
 class ServiceSpecConfigHttpBodyMode(betterproto.Enum):
+    """Mode is the expected format of the request body"""
+
     MODE_UNSET = 0
+    """
+    MODE_UNSET performs no request body format validation. This is
+     the default value.
+    """
+
     JSON = 1
     """
     JSON means that the request body must be validated for a valid
@@ -86,7 +133,14 @@ class ServiceSpecConfigHttpBodyMode(betterproto.Enum):
 
 
 class ServiceSpecConfigHttpHeaderForwardedMode(betterproto.Enum):
+    """
+    ForwardedMode sets how the `Forwarded` request header set by the
+     downstream is handled
+    """
+
     UNSET = 0
+    """UNSET falls back to the default behavior which is currently DROP"""
+
     DROP = 1
     """
     DROP deletes the Forwarded header. Currently the default
@@ -104,30 +158,740 @@ class ServiceSpecConfigHttpHeaderForwardedMode(betterproto.Enum):
 
 
 class ServiceSpecConfigHttpHeaderAuthorizationMode(betterproto.Enum):
+    """
+    AuthorizationMode sets how the downstream's `Authorization`
+     request header is handled
+    """
+
     AUTHORIZATION_MODE_UNSET = 0
+    """
+    AUTHORIZATION_MODE_UNSET falls back to the default behavior
+     which is to delete the header unless the Service is anonymous.
+    """
+
     PASS = 1
+    """
+    PASS passes the downstream's Authorization request header to the
+     upstream as is, if it exists.
+    """
+
     DELETE = 2
+    """DELETE deletes the downstream's Authorization request header"""
 
 
 class ServiceSpecConfigHttpPluginPhase(betterproto.Enum):
+    """
+    Phase sets whether the Plugin is invoked before or after the
+     authentication and authorization processes
+    """
+
     PHASE_UNSET = 0
+    """
+    PHASE_UNSET falls back to the default behavior which is
+     POST_AUTH
+    """
+
     PRE_AUTH = 1
+    """
+    PRE_AUTH invokes the Plugin before the authentication and
+     authorization processes. This is useful to manipulate or even
+     entirely drop the requests before proceeding further to the
+     authentication and authorization processes. A PRE_AUTH Plugin
+     has to be set in the "default" or global Configuration (as
+     opposed to named dynamic Configs) in order to actually work.
+    """
+
     POST_AUTH = 2
+    """
+    POST_AUTH invokes the Plugin after the authentication and
+     authorization processes. This is the default behavior.
+    """
 
 
 class ServiceSpecConfigHttpPluginExtProcProcessingModeHeaderSendMode(betterproto.Enum):
+    """
+    HeaderSendMode sets whether the headers are sent to the
+     ext_proc server
+    """
+
     HEADER_SEND_MODE_UNSET = 0
+    """HEADER_SEND_MODE_UNSET falls back to the default behavior"""
+
     SEND = 1
+    """SEND sends the headers to the ext_proc server"""
+
     SKIP = 2
+    """SKIP does not send the headers to the ext_proc server"""
 
 
 class ServiceSpecConfigHttpPluginExtProcProcessingModeBodySendMode(betterproto.Enum):
+    """
+    BodySendMode sets whether the body is sent to the ext_proc
+     server
+    """
+
     BODY_SEND_MODE_UNSET = 0
+    """BODY_SEND_MODE_UNSET falls back to the default behavior"""
+
     NONE = 1
+    """NONE does not send the body to the ext_proc server"""
+
     BUFFERED = 2
+    """
+    BUFFERED buffers the entire body and sends it to the
+     ext_proc server in a single message
+    """
+
+
+class ServiceSpecConfigMcpPluginGuardrailLeg(betterproto.Enum):
+    """Leg is the part of the exchange that is inspected"""
+
+    LEG_UNSET = 0
+    """LEG_UNSET falls back to the default behavior which is REQUEST"""
+
+    REQUEST = 1
+    """
+    REQUEST inspects the JSON-RPC request before it is proxied to
+     the upstream
+    """
+
+    RESPONSE = 2
+    """
+    RESPONSE inspects the JSON-RPC response before it is served
+     to the downstream. Note that a response that is streamed as
+     `text/event-stream` events is withheld in its entirety until
+     it ends, then inspected, and only then forwarded: it is the
+     only behavior that guarantees that no matched content ever
+     reaches the downstream.
+    """
+
+    BOTH = 3
+    """BOTH inspects the request as well as the response"""
+
+
+class ServiceSpecConfigMcpPluginGuardrailScope(betterproto.Enum):
+    """
+    Scope is the part of the content that is inspected. Note that
+     every Scope belongs to one leg of the exchange: a Scope that
+     does not belong to the inspected leg is a no-op rather than an
+     error, since a Guardrail whose leg is BOTH is expected to carry
+     the Scopes of both legs.
+    """
+
+    SCOPE_UNSET = 0
+    """
+    SCOPE_UNSET falls back to the default behavior which is
+     TOOL_ARGUMENTS on the request leg and TOOL_RESULTS on the
+     response leg
+    """
+
+    TOOL_ARGUMENTS = 1
+    """
+    TOOL_ARGUMENTS is the arguments that a `tools/call` request
+     carries. It is a request-leg Scope.
+    """
+
+    TOOL_RESULTS = 2
+    """
+    TOOL_RESULTS is the content that a `tools/call` result
+     carries, which includes both its content blocks and its
+     structured content. It is a response-leg Scope.
+    """
+
+    RESOURCE_CONTENTS = 3
+    """
+    RESOURCE_CONTENTS is the content that a `resources/read`
+     result carries. It is a response-leg Scope.
+    """
+
+    PROMPT_MESSAGES = 4
+    """
+    PROMPT_MESSAGES is the messages that a `prompts/get` result
+     carries. It is a response-leg Scope.
+    """
+
+    TOOL_DEFINITIONS = 5
+    """
+    TOOL_DEFINITIONS is the names, the descriptions and the JSON
+     Schemas that a `tools/list` result carries. It is the surface
+     on which a server describes to a model what it should do,
+     which makes it the carrier of tool poisoning, and it is a
+     response-leg Scope. Note that it is inspect-only: a tool
+     definition is a structured document rather than free text, so
+     the REDACT, STRIP and REPLACE Actions are rejected for this
+     Scope and only the DENY one is available.
+    """
+
+    ALL = 6
+    """ALL is every scope"""
+
+
+class ServiceSpecConfigLlmProtocol(betterproto.Enum):
+    """Protocol is the inference API protocol served by the Service."""
+
+    PROTOCOL_UNSET = 0
+    """
+    PROTOCOL_UNSET falls back to the default behavior which is
+     currently OPENAI
+    """
+
+    OPENAI = 1
+    """
+    OPENAI is the OpenAI REST API. It is also spoken by the
+     OpenAI-compatible servers and provider surfaces that serve the
+     same canonical `/v1` routes (e.g. vLLM, Ollama). The providers
+     that use their own request paths or API versioning schemes (e.g.
+     the Azure OpenAI deployment routes) are not supported.
+    """
+
+    ANTHROPIC = 2
+    """ANTHROPIC is the native Anthropic Messages API."""
+
+    GEMINI = 3
+    """
+    GEMINI is the Google Gemini API, which is the `/v1beta` generative
+     language surface that the Google GenAI SDKs speak to the Gemini
+     Developer API. Note that the model is named by the request path
+     rather than by the request body, and that Vertex AI is not this
+     protocol: it serves the same body shapes under project and
+     location scoped paths and it authenticates differently.
+    """
+
+    BEDROCK = 4
+    """
+    BEDROCK is the AWS Bedrock Runtime API. Its Converse operations
+     are the inference surface that Octelium understands, while its
+     InvokeModel operations are proxied without their bodies being
+     parsed since those bodies are model-native rather than defined by
+     the protocol. Note that the model is named by the request path
+     rather than by the request body, and that the upstream
+     authenticates with AWS Signature Version 4 which the `auth` field
+     provides via its `sigv4` type.
+    """
+
+
+class ServiceSpecConfigLlmOperation(betterproto.Enum):
+    """
+    Operation is the inference operation of a request, normalized across
+     the protocols. It names what a request does rather than which route
+     it arrived on, so a rule that matches the generation traffic of a
+     Cluster is one term rather than a disjunction over every protocol
+     that spells generation differently, and a rule written for one
+     protocol keeps working for a Service that later serves another.
+     The Protocol enum alongside it, and the request path, identify the
+     exact route wherever that matters.
+    """
+
+    OPERATION_UNSET = 0
+    """OPERATION_UNSET is not used"""
+
+    GENERATE = 1
+    """
+    GENERATE generates model output from an input. It covers the
+     conversational as well as the non-conversational text generation
+     operations of every protocol.
+    """
+
+    EMBED = 2
+    """EMBED generates the vector embeddings of an input"""
+
+    MODERATE = 3
+    """MODERATE classifies an input for safety"""
+
+    COUNT_TOKENS = 4
+    """
+    COUNT_TOKENS counts the tokens of an input without generating any
+     output
+    """
+
+    LIST_MODELS = 5
+    """LIST_MODELS lists the models served by the upstream"""
+
+    GET_MODEL = 6
+    """GET_MODEL describes one model served by the upstream"""
+
+    RAW_INFERENCE = 7
+    """
+    RAW_INFERENCE is an inference operation whose body is the native
+     payload of the model that the request names rather than a shape
+     that the protocol itself defines. Octelium does not parse it, so
+     the fields that are read from a request body are unset for it and
+     the inference-specific Plugins are a no-op.
+    """
+
+
+class ServiceSpecConfigLlmReasoningLevel(betterproto.Enum):
+    """
+    Level is a model-independent reasoning effort. The Levels are
+     ordered, from NONE up to MAX, and they name the positions on that
+     scale rather than the values of any particular provider: a model
+     that offers fewer steps than are named here is served the
+     strongest step of its own that does not exceed the configured
+     Level, while a model that names a step which no Level names is
+     reached through the `effort` field instead.
+    """
+
+    LEVEL_UNSET = 0
+    """LEVEL_UNSET is not used"""
+
+    NONE = 1
+    """
+    NONE disables reasoning. Note that a model which cannot stop
+     reasoning at all offers nothing at or below this Level, so its
+     requests are rejected rather than served the smallest effort,
+     or the smallest budget, that the model does accept, which would
+     be more reasoning than the Service allowed.
+    """
+
+    MINIMAL = 2
+    """
+    MINIMAL is the smallest amount of reasoning that a model
+     performs while still reasoning at all
+    """
+
+    LOW = 3
+    """LOW is a small amount of reasoning"""
+
+    MEDIUM = 4
+    """MEDIUM is a moderate amount of reasoning"""
+
+    HIGH = 5
+    """HIGH is a large amount of reasoning"""
+
+    XHIGH = 6
+    """
+    XHIGH is a larger amount of reasoning than HIGH. It is only
+     distinct from HIGH for the models that offer a step between
+     HIGH and their own largest one, and it is served as HIGH by the
+     models that do not.
+    """
+
+    MAX = 7
+    """
+    MAX is the largest amount of reasoning that the model offers.
+     It is the one Level that no model can exceed, which makes it
+     the way to ask for as much reasoning as possible without naming
+     a budget that a later model would then cap.
+    """
+
+
+class ServiceSpecConfigLlmPluginPromptSystemMode(betterproto.Enum):
+    """
+    Mode sets how the content is applied to the instructions that
+     the downstream itself supplied
+    """
+
+    MODE_UNSET = 0
+    """
+    MODE_UNSET falls back to the default behavior which is
+     PREPEND
+    """
+
+    PREPEND = 1
+    """
+    PREPEND inserts the content before the downstream's own
+     instructions. The downstream's own instruction carrier is
+     preserved as it is: a structured system block list keeps its
+     blocks and their metadata, and the instruction messages of
+     the `CHAT_COMPLETIONS` operation keep their own roles and
+     their own order.
+    """
+
+    APPEND = 2
+    """
+    APPEND inserts the content after the downstream's own
+     instructions. It preserves the downstream's own instruction
+     carrier in the same way as PREPEND.
+    """
+
+    REPLACE = 3
+    """
+    REPLACE discards the downstream's own instructions entirely
+     and uses the content instead. Note that it therefore also
+     discards the structure of the downstream's own instruction
+     carrier, which is the point of owning that carrier.
+    """
+
+    STRIP = 4
+    """
+    STRIP removes the downstream's own instructions and inserts
+     nothing at all. The content field is unused.
+    """
+
+    REJECT = 5
+    """
+    REJECT rejects the requests that carry their own system
+     instructions instead of silently discarding them, and
+     otherwise inserts the content. Note that it tests the
+     instructions that the request carried when it reached the
+     Prompt stage, so that several Prompt Plugins never reject
+     the content that one another inserted. Use it whenever the
+     Service, rather than the downstream, has to own the
+     instruction carrier that reaches the upstream: without it, a
+     downstream that supplies its own instructions turns the
+     Service's instructions into one more input that the model
+     weighs rather than a control that it obeys. A REJECT that
+     carries no content at all is how a Service refuses every
+     downstream-supplied instruction outright. Note that this
+     owns the carrier and nothing beyond it: it decides which
+     instructions are sent upstream, it does not make a model
+     obey them and it does not stop a prompt injection that
+     arrives through the messages, the tool results or the
+     retrieved content.
+    """
+
+
+class ServiceSpecConfigLlmPluginPromptMessageRole(betterproto.Enum):
+    """Role is the role of the messages that are inserted or edited"""
+
+    ROLE_UNSET = 0
+    """ROLE_UNSET is not used"""
+
+    USER = 1
+    """USER is a user message"""
+
+    ASSISTANT = 2
+    """
+    ASSISTANT is an assistant message. Note that a trailing
+     assistant message is a prefill, which only the ANTHROPIC
+     protocol supports at all: a prefill against the OPENAI
+     protocol rejects the request rather than being silently
+     dropped, while editing or inserting an assistant message
+     that is not the trailing one is supported by either
+     protocol. Note also that a prefill is additionally subject
+     to the upstream's own rules, which a gateway cannot know in
+     advance (e.g. Anthropic rejects a prefill whenever extended
+     thinking is enabled), so an upstream that refuses one
+     surfaces as an upstream error.
+    """
+
+
+class ServiceSpecConfigLlmPluginPromptMessagePosition(betterproto.Enum):
+    """Position sets where the content goes"""
+
+    POSITION_UNSET = 0
+    """
+    POSITION_UNSET falls back to the default behavior which is
+     APPEND
+    """
+
+    PREPEND = 1
+    """
+    PREPEND inserts the content into the selected message
+     itself, before that message's own content
+    """
+
+    APPEND = 2
+    """
+    APPEND inserts the content into the selected message
+     itself, after that message's own content
+    """
+
+    NEW_BEFORE = 3
+    """
+    NEW_BEFORE inserts a whole new message of the Role before
+     the selected one. Whenever the request carries no message of
+     that Role at all, the new message is appended at the end of
+     the conversation.
+    """
+
+    NEW_AFTER = 4
+    """
+    NEW_AFTER inserts a whole new message of the Role after the
+     selected one. Whenever the request carries no message of
+     that Role at all, the new message is appended at the end of
+     the conversation.
+    """
+
+
+class ServiceSpecConfigLlmPluginPromptMessageSelector(betterproto.Enum):
+    """
+    Selector chooses which of the messages of the Role are
+     selected
+    """
+
+    SELECTOR_UNSET = 0
+    """
+    SELECTOR_UNSET falls back to the default behavior which is
+     LAST
+    """
+
+    LAST = 1
+    """LAST selects the last message of the Role"""
+
+    FIRST = 2
+    """FIRST selects the first message of the Role"""
+
+    ALL = 3
+    """
+    ALL selects every message of the Role. It is unused for the
+     NEW_BEFORE and the NEW_AFTER positions.
+    """
+
+
+class ServiceSpecConfigLlmPluginToolsChoice(betterproto.Enum):
+    """
+    Choice sets how the tool choice that is requested by the
+     downstream itself is handled
+    """
+
+    CHOICE_UNSET = 0
+    """
+    CHOICE_UNSET falls back to the default behavior which is
+     PRESERVE
+    """
+
+    PRESERVE = 1
+    """PRESERVE keeps the requested tool choice as is"""
+
+    NONE = 2
+    """
+    NONE forces the tool choice to "none" which means that the
+     model is still offered the tools but it may not call any of
+     them
+    """
+
+    AUTO = 3
+    """
+    AUTO downgrades a forced tool choice (i.e. "required" or a
+     named tool) to "auto". It neutralizes a downstream that
+     compels a specific tool call without otherwise changing the
+     request.
+    """
+
+
+class ServiceSpecConfigLlmPluginToolsFilterDecision(betterproto.Enum):
+    """Decision is what happens to a tool that the Filter matches"""
+
+    DECISION_UNSET = 0
+    """
+    DECISION_UNSET falls back to the default behavior which is
+     REMOVE
+    """
+
+    ALLOW = 1
+    """
+    ALLOW keeps the tool as is and stops the evaluation of the
+     remaining Filters for it. It is how an allow list is
+     written: the allowed tools are listed first and a catch-all
+     Filter that removes or denies everything else is listed
+     last.
+    """
+
+    REMOVE = 2
+    """
+    REMOVE silently drops the tool from the request and proxies
+     it to the upstream. Use it for the downstreams that
+     optimistically declare a superset of the tools that they
+     actually need.
+    """
+
+    DENY = 3
+    """
+    DENY rejects the entire request. This is the auditable
+     behavior: the downstream is told that the tool is not
+     allowed instead of silently receiving a model that is
+     unable to call it.
+    """
+
+    REPLACE = 4
+    """
+    REPLACE replaces the declared tool definition with the one
+     that the `replace` field computes. Use it in order to pin a
+     tool that a downstream may declare but may not define, for
+     instance to narrow the JSON Schema of a tool, to rewrite
+     its description, or to pin the endpoint of a remote MCP
+     server declaration.
+    """
+
+
+class ServiceSpecConfigLlmPluginToolsToolPosition(betterproto.Enum):
+    """Position sets where the tool is added"""
+
+    POSITION_UNSET = 0
+    """
+    POSITION_UNSET falls back to the default behavior which is
+     APPEND
+    """
+
+    PREPEND = 1
+    """PREPEND adds the tool before the downstream's own tools"""
+
+    APPEND = 2
+    """APPEND adds the tool after the downstream's own tools"""
+
+
+class ServiceSpecConfigLlmPluginGuardrailLeg(betterproto.Enum):
+    """Leg is the part of the exchange that is inspected"""
+
+    LEG_UNSET = 0
+    """LEG_UNSET falls back to the default behavior which is REQUEST"""
+
+    REQUEST = 1
+    """
+    REQUEST inspects the request before it is proxied to the
+     upstream
+    """
+
+    RESPONSE = 2
+    """
+    RESPONSE inspects the response before it is served to the
+     downstream. Note that a streamed response is withheld in its
+     entirety until it ends, then inspected, and only then
+     forwarded: it is the only behavior that guarantees that no
+     matched content ever reaches the downstream, and its price is
+     that the time to first token grows by the duration that the
+     upstream needs in order to generate the whole response.
+    """
+
+    BOTH = 3
+    """BOTH inspects the request as well as the response"""
+
+
+class ServiceSpecConfigLlmPluginGuardrailScope(betterproto.Enum):
+    """Scope is the part of the content that is inspected"""
+
+    SCOPE_UNSET = 0
+    """
+    SCOPE_UNSET falls back to the default behavior which is
+     CONTENT
+    """
+
+    CONTENT = 1
+    """
+    CONTENT is the text that the request carries as its own
+     input, which is the conversation messages of the operations
+     that carry a conversation, the `prompt` of the `COMPLETIONS`
+     operation and the `input` of the `EMBEDDINGS` and the
+     `MODERATIONS` ones
+    """
+
+    INSTRUCTIONS = 2
+    """INSTRUCTIONS is the system instructions"""
+
+    TOOL_DEFINITIONS = 3
+    """
+    TOOL_DEFINITIONS is the names, the descriptions and the JSON
+     Schemas of the declared tools. Note that it is inspect-only:
+     a tool definition is a structured document rather than free
+     text, so the REDACT, STRIP and REPLACE Actions are rejected
+     for this Scope and only the DENY one is available. Use a
+     Tools Plugin in order to rewrite a tool definition.
+    """
+
+    TOOL_RESULTS = 4
+    """
+    TOOL_RESULTS is the content of the tool results that the
+     request carries. It is the content that the model retrieved
+     from somewhere else, which makes it the usual carrier of
+     indirect prompt injection. A content block is a tool result
+     whenever the protocol names it one (i.e. `tool_result`,
+     `function_call_output`, `search_result` and the
+     `*_tool_result` blocks of the provider-hosted tools), and
+     every block that is not one of those, including the ones that
+     a provider adds after this list was written, belongs to
+     CONTENT instead so that no block is skipped by both Scopes.
+    """
+
+    ALL = 5
+    """ALL is every scope"""
+
+
+class ServiceSpecConfigLlmPluginGuardrailPatternType(betterproto.Enum):
+    """
+    Type is a built-in deterministic detector of personal
+     information. Note that the credentials are matched by the
+     `secrets` detector instead.
+    """
+
+    TYPE_UNSET = 0
+    """TYPE_UNSET is not used"""
+
+    EMAIL = 1
+    """EMAIL is an email address"""
+
+    CREDIT_CARD = 2
+    """CREDIT_CARD is a Luhn-validated payment card number"""
+
+    IBAN = 3
+    """IBAN is an international bank account number"""
+
+    US_SSN = 4
+    """US_SSN is a United States social security number"""
+
+
+class ServiceSpecConfigLlmPluginGuardrailPatternAction(betterproto.Enum):
+    """
+    Action is what happens to the matched content. Note that
+     the rewriting Actions, which are REDACT, STRIP and REPLACE,
+     apply to the request leg only: a Guardrail whose leg is
+     RESPONSE or BOTH, as well as one whose scopes carry the tool
+     definitions, can only use the DENY Action, since rewriting a
+     response that the downstream is already reading, or a
+     structured document that is not free text, sanitizes nothing
+     while it reports that it did.
+    """
+
+    ACTION_UNSET = 0
+    """
+    ACTION_UNSET falls back to the default behavior which is
+     DENY
+    """
+
+    DENY = 1
+    """
+    DENY rejects the request, or withholds the response, with a
+     protocol-correct error
+    """
+
+    REDACT = 2
+    """
+    REDACT replaces the matched content with a fixed
+     placeholder, which names the built-in detector that matched
+     it whenever the Pattern is one, and the secret detection
+     rule that matched it whenever it is a `secrets` one, and
+     proceeds
+    """
+
+    STRIP = 3
+    """STRIP removes the matched content entirely and proceeds"""
+
+    REPLACE = 4
+    """
+    REPLACE replaces the matched content with the content that
+     the `replace` field computes, and proceeds
+    """
+
+
+class ServiceSpecConfigLlmPluginTokenRateLimitScope(betterproto.Enum):
+    """
+    Scope sets which of the token counts of a request are counted
+     against the limit
+    """
+
+    SCOPE_UNSET = 0
+    """SCOPE_UNSET falls back to the default behavior which is TOTAL"""
+
+    TOTAL = 1
+    """TOTAL counts the input tokens together with the output ones"""
+
+    INPUT = 2
+    """
+    INPUT counts the input tokens only. Note that the cached input
+     tokens are counted as input wherever the upstream reports them
+     as a part of the input rather than as a discount on it.
+    """
+
+    OUTPUT = 3
+    """
+    OUTPUT counts the output tokens only, which include the
+     reasoning tokens that the upstream reports
+    """
 
 
 class ServiceSpecConfigPostgresSslMode(betterproto.Enum):
+    """SSLMode is the PostgreSQL SSL mode used to connect to the upstream"""
+
     SSL_MODE_UNSET = 0
     """
     SSL_MODE_UNSET fallbacks to the default behavior which is currently
@@ -146,6 +910,8 @@ class ServiceSpecConfigPostgresSslMode(betterproto.Enum):
 
 
 class ServiceSpecConfigPostgresAuthorizationMode(betterproto.Enum):
+    """Mode sets when the authorization is enforced"""
+
     MODE_UNSET = 0
     """MODE_UNSET uses the default configuration which is currently NONE"""
 
@@ -163,6 +929,8 @@ class ServiceSpecConfigPostgresAuthorizationMode(betterproto.Enum):
 
 
 class SessionSpecState(betterproto.Enum):
+    """State is the state of the Session"""
+
     STATE_UNKNOWN = 0
     """STATE_UNKNOWN is not used"""
 
@@ -179,7 +947,11 @@ class SessionSpecState(betterproto.Enum):
 
 
 class SessionStatusType(betterproto.Enum):
+    """Type is the type of the Session"""
+
     TYPE_UNKNOWN = 0
+    """TYPE_UNKNOWN is not used"""
+
     CLIENT = 1
     """CLIENT is meant for client-based Sessions (i.e. the octelium client)"""
 
@@ -188,14 +960,42 @@ class SessionStatusType(betterproto.Enum):
 
 
 class SessionStatusAuthenticatorAction(betterproto.Enum):
+    """
+    AuthenticatorAction is the Authenticator-related action that the
+     Session is currently required or recommended to perform
+    """
+
     AUTHENTICATOR_ACTION_UNSET = 0
+    """AUTHENTICATOR_ACTION_UNSET means that no action is needed"""
+
     AUTHENTICATION_REQUIRED = 1
+    """
+    AUTHENTICATION_REQUIRED means that the Session must authenticate via
+     an Authenticator (i.e. MFA is enforced)
+    """
+
     REGISTRATION_REQUIRED = 2
+    """
+    REGISTRATION_REQUIRED means that the Session must register an
+     Authenticator
+    """
+
     AUTHENTICATION_RECOMMENDED = 3
+    """
+    AUTHENTICATION_RECOMMENDED means that authenticating via an
+     Authenticator is recommended but not enforced
+    """
+
     REGISTRATION_RECOMMENDED = 4
+    """
+    REGISTRATION_RECOMMENDED means that registering an Authenticator is
+     recommended but not enforced
+    """
 
 
 class SessionStatusConnectionL3Mode(betterproto.Enum):
+    """L3Mode is the layer-3 mode of the connection"""
+
     BOTH = 0
     """BOTH means that the connection is dual-stack"""
 
@@ -207,6 +1007,8 @@ class SessionStatusConnectionL3Mode(betterproto.Enum):
 
 
 class SessionStatusConnectionType(betterproto.Enum):
+    """Type is the type of the connection's tunnel"""
+
     TYPE_UNKNOWN = 0
     """TYPE_UNKNOWN is not used"""
 
@@ -218,6 +1020,8 @@ class SessionStatusConnectionType(betterproto.Enum):
 
 
 class SessionStatusConnectionUpstreamL4Type(betterproto.Enum):
+    """L4Type is the layer-4 protocol of the upstream"""
+
     L4_UNKNOWN = 0
     """L4_UNKNOWN is not used"""
 
@@ -229,6 +1033,8 @@ class SessionStatusConnectionUpstreamL4Type(betterproto.Enum):
 
 
 class SessionStatusConnectionUpstreamMode(betterproto.Enum):
+    """Mode is how the upstream is served by the connected Session"""
+
     MODE_UNSET = 0
     """MODE_UNSET is not used"""
 
@@ -246,31 +1052,107 @@ class SessionStatusConnectionUpstreamMode(betterproto.Enum):
 
 
 class SessionStatusAuthenticationInfoType(betterproto.Enum):
+    """Type is the method by which the Session was authenticated"""
+
     TYPE_UNSET = 0
+    """TYPE_UNSET is not used"""
+
     CREDENTIAL = 1
+    """CREDENTIAL means that the authentication was done via a Credential"""
+
     INTERNAL = 2
+    """
+    INTERNAL means that the authentication was done internally by the
+     Cluster itself
+    """
+
     REFRESH_TOKEN = 3
+    """
+    REFRESH_TOKEN means that the authentication was a
+     re-authentication done via the Session's refresh token
+    """
+
     EXTERNAL = 4
+    """
+    EXTERNAL means that the authentication was done by an external
+     owner of the Session
+    """
+
     IDENTITY_PROVIDER = 5
+    """
+    IDENTITY_PROVIDER means that the authentication was done via an
+     IdentityProvider
+    """
+
     AUTHENTICATOR = 6
+    """
+    AUTHENTICATOR means that the authentication was done via an
+     Authenticator
+    """
 
 
 class SessionStatusAuthenticationInfoAal(betterproto.Enum):
+    """
+    AAL is the authenticator assurance level (AAL) of the
+     authentication as defined by NIST SP 800-63B
+    """
+
     AAL_UNSET = 0
+    """AAL_UNSET is not used"""
+
     AAL1 = 1
+    """
+    AAL1 provides some assurance that the User controls a single
+     authentication factor
+    """
+
     AAL2 = 2
+    """
+    AAL2 provides high confidence that the User controls two distinct
+     authentication factors
+    """
+
     AAL3 = 3
+    """
+    AAL3 provides very high confidence that the User controls a
+     hardware-based authenticator
+    """
 
 
 class SessionStatusAuthenticationInfoAuthenticatorMode(betterproto.Enum):
+    """
+    Mode is the role that the Authenticator played in the
+     authentication
+    """
+
     MODE_UNSET = 0
+    """MODE_UNSET is not used"""
+
     DEFAULT = 1
+    """
+    DEFAULT means that the Authenticator was used for a
+     re-authentication of an existent Session
+    """
+
     PASSKEY = 2
+    """
+    PASSKEY means that the Authenticator was used for a direct
+     passwordless Passkey login
+    """
+
     MFA = 3
+    """
+    MFA means that the Authenticator was used as a second factor
+     after a successful IdentityProvider authentication
+    """
 
 
 class CredentialSpecType(betterproto.Enum):
+    """Type is the type of the Credential"""
+
     TYPE_UNKNOWN = 0
+    """TYPE_UNKNOWN is not used"""
+
     AUTH_TOKEN = 1
     """
     AUTH_TOKEN means that the Credential is an authentication token.
@@ -292,6 +1174,8 @@ class CredentialSpecType(betterproto.Enum):
 
 
 class DeviceSpecState(betterproto.Enum):
+    """State is the state of the Device"""
+
     STATE_UNKNOWN = 0
     """STATE_UNKNOWN is not used"""
 
@@ -306,15 +1190,139 @@ class DeviceSpecState(betterproto.Enum):
 
 
 class DeviceStatusOsType(betterproto.Enum):
+    """OSType is the operating system of the Device"""
+
     OS_TYPE_UNKNOWN = 0
+    """OS_TYPE_UNKNOWN is not used"""
+
     LINUX = 1
+    """LINUX means that the Device runs Linux"""
+
     WINDOWS = 2
+    """WINDOWS means that the Device runs Windows"""
+
     MAC = 3
+    """MAC means that the Device runs macOS"""
+
     ANDROID = 4
+    """ANDROID means that the Device runs Android"""
+
     IOS = 5
+    """IOS means that the Device runs iOS"""
+
+
+class DeviceStatusPostureRiskLevel(betterproto.Enum):
+    """
+    RiskLevel is the overall risk level of the Device as assessed by the
+     provider
+    """
+
+    RISK_LEVEL_UNKNOWN = 0
+    """RISK_LEVEL_UNKNOWN means that the provider reported no risk level"""
+
+    LOW = 1
+    """LOW is a low risk level"""
+
+    MEDIUM = 2
+    """MEDIUM is a medium risk level"""
+
+    HIGH = 3
+    """HIGH is a high risk level"""
+
+    CRITICAL = 4
+    """CRITICAL is a critical risk level"""
+
+
+class DeviceStatusPostureSignalState(betterproto.Enum):
+    """
+    SignalState semantics under the single-provider model: adapters MUST
+     set NOT_APPLICABLE for every named signal outside their provider's
+     domain (an EDR adapter sets compliant = NOT_APPLICABLE, an MDM
+     adapter sets threatFree = NOT_APPLICABLE). SIGNAL_STATE_UNKNOWN is
+     reserved for "the provider should know this but did not report it"
+     and fails closed in policy. Leaving a signal UNKNOWN when it is
+     actually out-of-domain will lock devices out under any policy that
+     requires that signal.
+    """
+
+    SIGNAL_STATE_UNKNOWN = 0
+    """
+    SIGNAL_STATE_UNKNOWN means that the provider should know this signal
+     but did not report it. It fails closed in policy.
+    """
+
+    PASS = 1
+    """PASS means that the signal is satisfied"""
+
+    FAIL = 2
+    """FAIL means that the signal is not satisfied"""
+
+    NOT_APPLICABLE = 3
+    """
+    NOT_APPLICABLE means that the signal is outside the provider's
+     domain
+    """
+
+
+class DeviceStatusBindingState(betterproto.Enum):
+    """State is the state of the Binding"""
+
+    STATE_UNKNOWN = 0
+    """STATE_UNKNOWN is not used"""
+
+    WAITING_APPROVAL = 1
+    """
+    WAITING_APPROVAL means a unique candidate exists and MANUAL
+     approval mode requires administrator action before acceptance.
+     Expiry (per expiresAt) clears the Binding rather than tombstoning
+     it, so a later attempt can retry.
+    """
+
+    ACCEPTED = 2
+    """
+    ACCEPTED means that the Device is bound to ownerRef. It is a sticky
+     state that is cleared only by reset.
+    """
+
+    REJECTED = 3
+    """
+    REJECTED is a sticky record that this Device must not bind to
+     ownerRef, set by administrator rejection or by losing a uniqueness
+     claim to another Device. Cleared only by reset.
+    """
+
+    AMBIGUOUS = 4
+    """
+    AMBIGUOUS means candidate selection could not resolve uniquely:
+     multiple DeviceManagers matched at equal priority, a provider
+     inventory matched non-uniquely, or probe and identity sources
+     disagreed within one DeviceManager. The specifics are in message.
+     Recomputed on each reconcile; clears itself once resolved.
+    """
+
+
+class DeviceStatusBindingAcceptanceMethod(betterproto.Enum):
+    """AcceptanceMethod is how the Binding was accepted"""
+
+    ACCEPTANCE_METHOD_UNKNOWN = 0
+    """ACCEPTANCE_METHOD_UNKNOWN is not used"""
+
+    AUTOMATIC = 1
+    """AUTOMATIC means that the Binding was accepted automatically"""
+
+    EMAIL = 2
+    """
+    EMAIL means that the Binding was accepted by the User via an email
+     confirmation
+    """
+
+    MANUAL = 3
+    """MANUAL means that the Binding was accepted by an administrator"""
 
 
 class PolicySpecRuleEffect(betterproto.Enum):
+    """Effect is the decision of the Rule once its Condition matches"""
+
     EFFECT_UNKNOWN = 0
     """EFFECT_UNKNOWN is not used."""
 
@@ -326,23 +1334,24 @@ class PolicySpecRuleEffect(betterproto.Enum):
 
 
 class PolicySpecEnforcementRuleEffect(betterproto.Enum):
+    """
+    Effect is the decision of the EnforcementRule once its Condition
+     matches
+    """
+
     EFFECT_UNKNOWN = 0
     """EFFECT_UNKNOWN is not used."""
 
     ENFORCE = 1
-    """
-    ALLOW means that the policy allows the request if any of the
-     Conditions are matched.
-    """
+    """ENFORCE forces the Policy to be evaluated"""
 
     IGNORE = 2
-    """
-    DENY means that the policy denies the request if any of the
-     Conditions are matched.
-    """
+    """IGNORE forces the Policy to be ignored altogether"""
 
 
 class AccessLogEntryInfoHttpHttpVersion(betterproto.Enum):
+    """HTTPVersion is the HTTP version of the request"""
+
     HTTP_VERSION_UNKNOWN = 0
     """HTTP_VERSION_UNKNOWN stands for an unspecified HTTP version."""
 
@@ -360,6 +1369,8 @@ class AccessLogEntryInfoHttpHttpVersion(betterproto.Enum):
 
 
 class AccessLogEntryInfoTcpType(betterproto.Enum):
+    """Type is the TCP-specific type of the entry"""
+
     TYPE_UNKNOWN = 0
     """TYPE_UNKNOWN is not used"""
 
@@ -371,6 +1382,8 @@ class AccessLogEntryInfoTcpType(betterproto.Enum):
 
 
 class AccessLogEntryInfoSshType(betterproto.Enum):
+    """Type is the SSH-specific type of the entry"""
+
     TYPE_UNKNOWN = 0
     """TYPE_UNKNOWN is not used"""
 
@@ -406,6 +1419,8 @@ class AccessLogEntryInfoSshType(betterproto.Enum):
 
 
 class AccessLogEntryInfoSshSessionRecordingType(betterproto.Enum):
+    """Type is the type of the recording chunk"""
+
     TYPE_UNKNOWN = 0
     """TYPE_UNKNOWN is not used"""
 
@@ -417,6 +1432,8 @@ class AccessLogEntryInfoSshSessionRecordingType(betterproto.Enum):
 
 
 class AccessLogEntryInfoUdpType(betterproto.Enum):
+    """Type is the UDP-specific type of the entry"""
+
     TYPE_UNKNOWN = 0
     """TYPE_UNKNOWN is not used"""
 
@@ -428,6 +1445,8 @@ class AccessLogEntryInfoUdpType(betterproto.Enum):
 
 
 class AccessLogEntryInfoPostgresType(betterproto.Enum):
+    """Type is the PostgreSQL-specific type of the entry"""
+
     TYPE_UNKNOWN = 0
     """TYPE_UNKNOWN is not used"""
 
@@ -457,35 +1476,398 @@ class AccessLogEntryInfoPostgresType(betterproto.Enum):
 
 
 class AccessLogEntryInfoMySqlType(betterproto.Enum):
+    """Type is the MySQL-specific type of the entry"""
+
     TYPE_UNKNOWN = 0
+    """TYPE_UNKNOWN is not used"""
+
     SESSION_START = 1
+    """SESSION_START is the start of a new MySQL connection"""
+
     SESSION_END = 2
+    """SESSION_END is the end of a MySQL connection"""
+
     QUERY = 3
+    """QUERY is a query command"""
+
     INIT_DB = 4
+    """INIT_DB is a command that changes the default database"""
+
     CREATE_DB = 5
+    """CREATE_DB is a command that creates a database"""
+
     DROP_DB = 6
+    """DROP_DB is a command that drops a database"""
+
     QUIT = 7
+    """QUIT is a command that closes the connection"""
+
     PREPARE_STATEMENT = 8
+    """PREPARE_STATEMENT is a command that prepares a statement"""
+
     EXECUTE_STATEMENT = 9
+    """EXECUTE_STATEMENT is a command that executes a prepared statement"""
+
     CLOSE_STATEMENT = 10
+    """CLOSE_STATEMENT is a command that closes a prepared statement"""
+
     FETCH_STATEMENT = 11
+    """
+    FETCH_STATEMENT is a command that fetches the rows of a prepared
+     statement
+    """
+
     RESET_STATEMENT = 12
+    """RESET_STATEMENT is a command that resets a prepared statement"""
+
     DEBUG = 13
+    """DEBUG is a command that dumps the upstream's debug information"""
+
     CHANGE_USER = 14
+    """CHANGE_USER is a command that changes the connection's user"""
 
 
 class AccessLogEntryInfoDnsType(betterproto.Enum):
+    """Type is the type of the DNS query"""
+
     TYPE_UNSET = 0
+    """TYPE_UNSET is not used"""
+
     A = 1
+    """A is an IPv4 address query"""
+
     AAAA = 2
+    """AAAA is an IPv6 address query"""
+
     TXT = 3
+    """TXT is a text record query"""
+
     CNAME = 4
+    """CNAME is a canonical name query"""
+
     MX = 5
+    """MX is a mail exchange query"""
+
     TYPE_OTHER = 6
+    """
+    TYPE_OTHER is any other query type. The numeric type is available
+     in the TypeID field.
+    """
+
+
+class AccessLogEntryInfoSocks5Type(betterproto.Enum):
+    """Type is the SOCKS5-specific type of the entry"""
+
+    TYPE_UNSPECIFIED = 0
+    """TYPE_UNSPECIFIED is not used"""
+
+    CONNECT = 1
+    """CONNECT is a SOCKS5 connection request"""
+
+    SESSION_END = 2
+    """SESSION_END is the end of a SOCKS5 connection"""
+
+
+class AccessLogEntryInfoSocks5AddressType(betterproto.Enum):
+    """AddressType is the type of the requested destination address"""
+
+    ADDRESS_TYPE_UNSPECIFIED = 0
+    """ADDRESS_TYPE_UNSPECIFIED is not used"""
+
+    IPV4 = 1
+    """IPV4 means that the destination is an IPv4 address"""
+
+    DOMAIN = 2
+    """DOMAIN means that the destination is a domain name"""
+
+    IPV6 = 3
+    """IPV6 means that the destination is an IPv6 address"""
+
+
+class AccessLogEntryInfoMcpType(betterproto.Enum):
+    """Type is the MCP-specific type of the entry"""
+
+    TYPE_UNSET = 0
+    """TYPE_UNSET is not used"""
+
+    COMPLETE = 1
+    """COMPLETE is a request that received a finite response"""
+
+    STREAM_START = 2
+    """STREAM_START is the beginning of a `text/event-stream` response"""
+
+    STREAM_END = 3
+    """STREAM_END is the end of a `text/event-stream` response"""
+
+
+class AccessLogEntryInfoLlmType(betterproto.Enum):
+    """Type is the LLM-specific type of the entry"""
+
+    TYPE_UNSET = 0
+    """TYPE_UNSET is not used"""
+
+    COMPLETE = 1
+    """COMPLETE is a request that received a finite response"""
+
+    STREAM_START = 2
+    """STREAM_START is the beginning of a `text/event-stream` response"""
+
+    STREAM_END = 3
+    """STREAM_END is the end of a `text/event-stream` response"""
+
+
+class AccessLogEntryInfoLlmSource(betterproto.Enum):
+    """Source is what produced the response"""
+
+    SOURCE_UNSET = 0
+    """SOURCE_UNSET means that no response was produced at all"""
+
+    UPSTREAM = 1
+    """
+    UPSTREAM is a response generated by the upstream provider, which
+     is the only Source that consumed inference tokens
+    """
+
+    SEMANTIC_CACHE = 2
+    """
+    SEMANTIC_CACHE is a response that the SemanticCache Plugin served
+     from an earlier one. The upstream never saw the request.
+    """
+
+    OCTELIUM = 3
+    """
+    OCTELIUM is a response that Octelium itself produced, which is the
+     case for every rejected request
+    """
+
+
+class AccessLogEntryInfoLlmFinishReason(betterproto.Enum):
+    """
+    FinishReason is the completion status of the response, normalized
+     across the providers. The providers spell the same outcome
+     differently (e.g. `stop`, `end_turn` and `STOP` all mean that the
+     model finished on its own), so a chart that grouped on the raw value
+     would split one outcome into one slice per protocol.
+    """
+
+    FINISH_REASON_UNSET = 0
+    """
+    FINISH_REASON_UNSET means that the response reported no completion
+     status at all, which is the case for a request that never reached
+     the upstream as well as for a stream that ended early
+    """
+
+    STOP = 1
+    """STOP means that the model finished on its own"""
+
+    LENGTH = 2
+    """
+    LENGTH means that the response was cut short by an output token
+     limit
+    """
+
+    TOOL_CALL = 3
+    """TOOL_CALL means that the model stopped in order to invoke a tool"""
+
+    CONTENT_FILTER = 4
+    """
+    CONTENT_FILTER means that the provider's own safety system stopped
+     the response. Note that it is the provider's filter rather than an
+     Octelium Guardrail, which is recorded in the `guardrails` field.
+    """
+
+    ERROR = 5
+    """ERROR means that the provider reported the response as failed"""
+
+    OTHER = 6
+    """
+    OTHER means that the provider reported a status that Octelium does
+     not normalize. Read the RawFinishReason field for it.
+    """
+
+
+class AccessLogEntryInfoLlmModelSource(betterproto.Enum):
+    """Source is what decided the Effective model"""
+
+    SOURCE_UNSET = 0
+    """
+    SOURCE_UNSET means that the model requested by the downstream
+     was served as is
+    """
+
+    CONFIG = 1
+    """CONFIG is the Service's own `model` field"""
+
+    PLUGIN = 2
+    """PLUGIN is a Model Plugin"""
+
+    SEMANTIC_ROUTER = 3
+    """SEMANTIC_ROUTER is a SemanticRouter Plugin"""
+
+
+class AccessLogEntryInfoLlmGuardrailResult(betterproto.Enum):
+    """Result is the outcome that the Plugin reached on the leg"""
+
+    RESULT_UNSET = 0
+    """RESULT_UNSET is not used"""
+
+    PASS = 1
+    """
+    PASS means that the Plugin inspected the content and left it
+     unchanged
+    """
+
+    MODIFIED = 2
+    """
+    MODIFIED means that the Plugin rewrote the content, which is the
+     case for a redaction as well as for a replacement
+    """
+
+    DENIED = 3
+    """
+    DENIED means that the Plugin rejected the exchange because the
+     content matched a pattern whose action is to deny
+    """
+
+    ERROR = 4
+    """
+    ERROR means that the Plugin could not reach a verdict at all
+     (e.g. its patterns could not be built, or a response could not
+     be decoded) and that the exchange was therefore rejected
+     without any content having matched. It is deliberately distinct
+     from DENIED, since a detector outage and a policy violation are
+     different security events that a dashboard must not merge.
+    """
+
+
+class AccessLogEntryInfoLlmTokenRateLimitResult(betterproto.Enum):
+    """Result is the outcome of the quota enforcement"""
+
+    RESULT_UNSET = 0
+    """
+    RESULT_UNSET means that no TokenRateLimit Plugin was applied to
+     the request at all
+    """
+
+    ALLOWED = 1
+    """ALLOWED means that every applied Plugin admitted the request"""
+
+    DENIED = 2
+    """
+    DENIED means that a Plugin rejected the request because its
+     quota was already exhausted
+    """
+
+
+class AccessLogEntryInfoLlmSemanticCacheResult(betterproto.Enum):
+    """Result is the outcome of the cache lookup"""
+
+    RESULT_UNSET = 0
+    """
+    RESULT_UNSET means that no SemanticCache Plugin was applied to
+     the request at all
+    """
+
+    EXACT_HIT = 1
+    """
+    EXACT_HIT is a request that the cache served because the Service
+     had already served an identical one
+    """
+
+    SEMANTIC_HIT = 2
+    """
+    SEMANTIC_HIT is a request that the cache served because the
+     Service had already served one of the same meaning within the
+     same exact execution context
+    """
+
+    MISS = 3
+    """
+    MISS is a request that the cache could not serve and that was
+     therefore proxied to the upstream
+    """
+
+    BYPASS = 4
+    """
+    BYPASS is a request that the cache never looked up because it is
+     not a cacheable request at all
+    """
+
+    ERROR = 5
+    """
+    ERROR is a request that the cache could not look up because its
+     embedding backend or its vector store failed. Such a request is
+     proxied to the upstream rather than rejected, so it is
+     deliberately distinct from a MISS: an outage that read as an
+     ordinary miss would show as a hit rate that fell for no reason.
+    """
+
+
+class AccessLogEntryInfoLlmSemanticRouterResult(betterproto.Enum):
+    """Result is the outcome of the routing decision"""
+
+    RESULT_UNSET = 0
+    """
+    RESULT_UNSET means that no SemanticRouter Plugin was applied to
+     the request at all
+    """
+
+    MATCH = 1
+    """
+    MATCH is a request whose meaning reached the minimum similarity
+     of a Route
+    """
+
+    NO_MATCH = 2
+    """
+    NO_MATCH is a request that reached the minimum similarity of no
+     Route at all and that is therefore served the `fallbackModel`
+    """
+
+    BYPASS = 3
+    """
+    BYPASS is a request that the Plugin never classified because it
+     is not a routable request at all (e.g. it carries no textual
+     request to classify)
+    """
+
+    ERROR = 4
+    """
+    ERROR is a request that the Plugin could not classify because
+     its embedding backend failed or because its own Routes could not
+     be embedded. Such a request is served the `fallbackModel` rather
+     than rejected, so it is deliberately distinguished from a
+     NO_MATCH in order to keep an outage from reading as a threshold
+     that is set too high.
+    """
+
+
+class AccessLogEntryInfoLlmUsageState(betterproto.Enum):
+    """State is whether the reported usage is the final one"""
+
+    STATE_UNSET = 0
+    """STATE_UNSET is not used"""
+
+    COMPLETE = 1
+    """
+    COMPLETE is the usage of a request whose provider reported its
+     final counts
+    """
+
+    PARTIAL = 2
+    """
+    PARTIAL is the usage of a stream that ended before its final
+     usage was received, so its counts are a floor rather than a
+     total
+    """
 
 
 class AccessLogEntryCommonStatus(betterproto.Enum):
+    """Status is the authorization decision of the request"""
+
     STATUS_UNSET = 0
+    """STATUS_UNSET is not used"""
+
     ALLOWED = 1
     """ALLOWED means that the request is allowed"""
 
@@ -494,6 +1876,8 @@ class AccessLogEntryCommonStatus(betterproto.Enum):
 
 
 class AccessLogEntryCommonReasonType(betterproto.Enum):
+    """Type is the reason of the authorization decision"""
+
     TYPE_UNKNOWN_REASON = 0
     """TYPE_UNKNOWN_REASON is not used"""
 
@@ -547,54 +1931,99 @@ class AccessLogEntryCommonReasonType(betterproto.Enum):
     AUTHENTICATOR_REGISTRATION_REQUIRED = 12
     SESSION_EXPIRED = 13
     ACCESS_TOKEN_EXPIRED = 14
+    """
+    ACCESS_TOKEN_EXPIRED means that the Session's access token is
+     expired
+    """
 
 
 class IdentityProviderSpecAalRuleAal(betterproto.Enum):
+    """
+    AAL is the authenticator assurance level as defined by NIST SP 800-63B
+    """
+
     AAL_UNSET = 0
+    """AAL_UNSET is not used"""
+
     AAL1 = 1
+    """
+    AAL1 provides some assurance that the User controls a single
+     authentication factor
+    """
+
     AAL2 = 2
+    """
+    AAL2 provides high confidence that the User controls two distinct
+     authentication factors
+    """
+
     AAL3 = 3
+    """
+    AAL3 provides very high confidence that the User controls a
+     hardware-based authenticator
+    """
 
 
 class IdentityProviderSpecPostAuthenticationRuleEffect(betterproto.Enum):
+    """Effect is the decision of the rule once its Condition matches"""
+
     EFFECT_UNKNOWN = 0
     """EFFECT_UNKNOWN is not used."""
 
     ALLOW = 1
-    """ALLOW allows the request."""
+    """ALLOW accepts the authentication."""
 
     DENY = 2
-    """DENY denies the request."""
+    """DENY rejects the authentication."""
 
 
 class IdentityProviderStatusType(betterproto.Enum):
+    """Type is the type of the IdentityProvider"""
+
     TYPE_UNKNOWN = 0
+    """TYPE_UNKNOWN is not used"""
+
     GITHUB = 1
+    """GITHUB means that the IdentityProvider is a GitHub OAuth2 provider"""
+
     OIDC = 2
+    """OIDC means that the IdentityProvider is an OpenID Connect provider"""
+
     SAML = 3
+    """SAML means that the IdentityProvider is a SAML 2.0 provider"""
+
     OIDC_IDENTITY_TOKEN = 4
+    """
+    OIDC_IDENTITY_TOKEN means that the IdentityProvider verifies the OIDC
+     identity tokens used by the WORKLOAD Users
+    """
 
 
 class ClusterConfigSpecAuthenticatorEnforcementRuleEffect(betterproto.Enum):
+    """Effect is the decision of the rule once its Condition matches"""
+
     EFFECT_UNKNOWN = 0
     """EFFECT_UNKNOWN is not used."""
 
     ENFORCE = 1
-    """
-    ALLOW means that the policy allows the request if any of the
-     Conditions are matched.
-    """
+    """ENFORCE requires the Authenticator registration/authentication"""
 
     IGNORE = 2
     """
-    DENY means that the policy denies the request if any of the
-     Conditions are matched.
+    IGNORE does not require the Authenticator
+     registration/authentication
     """
 
     RECOMMEND = 3
+    """
+    RECOMMEND recommends, without requiring, the Authenticator
+     registration/authentication
+    """
 
 
 class ClusterConfigSpecAuthenticatorRuleEffect(betterproto.Enum):
+    """Effect is the decision of the rule once its Condition matches"""
+
     EFFECT_UNKNOWN = 0
     """EFFECT_UNKNOWN is not used."""
 
@@ -608,14 +2037,103 @@ class ClusterConfigSpecAuthenticatorRuleEffect(betterproto.Enum):
 class ClusterConfigSpecAuthenticatorFidoAttestationConveyancePreference(
     betterproto.Enum
 ):
+    """
+    AttestationConveyancePreference is the WebAuthn attestation
+     conveyance preference used during the registration
+    """
+
     ATTESTATION_CONVEYANCE_PREFERENCE_UNSET = 0
+    """
+    ATTESTATION_CONVEYANCE_PREFERENCE_UNSET falls back to the default
+     behavior
+    """
+
     DIRECT = 1
+    """DIRECT requests the Authenticator's attestation statement as is"""
+
     INDIRECT = 2
+    """
+    INDIRECT lets the client anonymize the Authenticator's attestation
+     statement
+    """
+
     NONE = 3
+    """NONE requests no attestation statement at all"""
+
     ENTERPRISE = 4
+    """
+    ENTERPRISE requests an enterprise attestation that can carry a
+     uniquely identifying Authenticator identifier
+    """
+
+
+class ClusterConfigSpecAuthenticatorFidoUserVerification(betterproto.Enum):
+    """
+    UserVerification is the WebAuthn User verification requirement that
+     is used during the registration as well as the authentication of the
+     FIDO Authenticators that are used as second factors. It does not
+     apply to the Passkey login which always requires the User
+     verification.
+    """
+
+    USER_VERIFICATION_UNSET = 0
+    """
+    USER_VERIFICATION_UNSET falls back to the default behavior which
+     is PREFERRED
+    """
+
+    REQUIRED = 1
+    """
+    REQUIRED rejects the registration as well as the authentication
+     unless the Authenticator verifies the User (e.g. via a PIN or a
+     biometric). Note that setting this mode rejects the
+     authentication of the already registered Authenticators that are
+     not capable of verifying the User.
+    """
+
+    PREFERRED = 2
+    """
+    PREFERRED asks the Authenticator to verify the User whenever it is
+     capable of doing so without rejecting the registration or the
+     authentication otherwise
+    """
+
+    DISCOURAGED = 3
+    """DISCOURAGED asks the Authenticator not to verify the User"""
+
+
+class ClusterConfigSpecAuthenticatorTpmEndorsementTrustMode(betterproto.Enum):
+    """Mode is the endorsement key certificate verification mode"""
+
+    MODE_UNKNOWN = 0
+    """MODE_UNKNOWN falls back to DISABLED"""
+
+    DISABLED = 1
+    """
+    DISABLED never rejects a registration because of its endorsement
+     key certificate. A TPM that presents no certificate at all is
+     accepted. Whenever trustedCAs are set, the certificate is still
+     verified and the outcome is recorded in the Authenticator
+     status, which makes this mode useful to survey the already
+     registered Authenticators before enforcing the verification.
+    """
+
+    VERIFY_IF_PRESENT = 2
+    """
+    VERIFY_IF_PRESENT accepts a TPM that presents no endorsement key
+     certificate, but rejects a TPM whose certificate does not verify
+    """
+
+    REQUIRE_VERIFIED = 3
+    """
+    REQUIRE_VERIFIED requires every TPM to present an endorsement key
+     certificate that verifies against the trustedCAs
+    """
 
 
 class ClusterConfigStatusNetworkConfigMode(betterproto.Enum):
+    """Mode is the Cluster's networking mode"""
+
     MODE_DEFAULT = 0
     """MODE_DEFAULT defaults to DUAL_STACK"""
 
@@ -641,17 +2159,150 @@ class ClusterConfigStatusNetworkConfigMode(betterproto.Enum):
     """
 
 
+class RequestContextRequestSocks5ConnectAddressType(betterproto.Enum):
+    """AddressType is the type of the requested destination address"""
+
+    ADDRESS_TYPE_UNSPECIFIED = 0
+    """ADDRESS_TYPE_UNSPECIFIED is not used"""
+
+    IPV4 = 1
+    """IPV4 means that the destination is an IPv4 address"""
+
+    DOMAIN = 2
+    """DOMAIN means that the destination is a domain name"""
+
+    IPV6 = 3
+    """IPV6 means that the destination is an IPv6 address"""
+
+
+class RequestContextRequestLlmEstimateQuality(betterproto.Enum):
+    """
+    EstimateQuality is whether the EstimatedInputTokens field accounted
+     for the entire input of the request
+    """
+
+    ESTIMATE_QUALITY_UNSET = 0
+    """ESTIMATE_QUALITY_UNSET is not used"""
+
+    COMPLETE = 1
+    """
+    COMPLETE means that the entire input of the request was text that
+     Octelium could account for
+    """
+
+    PARTIAL = 2
+    """
+    PARTIAL means that the request carried non-text input (e.g. images
+     or audio) that was reserved at a flat rate rather than measured
+    """
+
+    UNAVAILABLE = 3
+    """
+    UNAVAILABLE means that no estimate could be calculated at all, which
+     is the case for the operations that carry no prompt
+    """
+
+
+class RequestContextRequestLlmRoute(betterproto.Enum):
+    """
+    Route is the canonical inference API route of the request. It names
+     the exact surface that the request arrived on, which the Operation
+     field deliberately does not, so it is what a rule that has to
+     distinguish two routes of the same protocol reads.
+    """
+
+    ROUTE_UNSET = 0
+    """ROUTE_UNSET is not used"""
+
+    CHAT_COMPLETIONS = 1
+    """CHAT_COMPLETIONS is `POST /v1/chat/completions`"""
+
+    RESPONSES = 2
+    """RESPONSES is `POST /v1/responses`"""
+
+    COMPLETIONS = 3
+    """COMPLETIONS is the legacy `POST /v1/completions`"""
+
+    EMBEDDINGS = 4
+    """EMBEDDINGS is `POST /v1/embeddings`"""
+
+    MODERATIONS = 5
+    """MODERATIONS is `POST /v1/moderations`"""
+
+    MODELS_LIST = 6
+    """MODELS_LIST is `GET /v1/models`"""
+
+    MODELS_GET = 7
+    """MODELS_GET is `GET /v1/models/{model}`"""
+
+    MESSAGES = 8
+    """MESSAGES is `POST /v1/messages`"""
+
+    COUNT_TOKENS = 9
+    """
+    COUNT_TOKENS is `POST /v1/messages/count_tokens` for the ANTHROPIC
+     protocol and `POST /v1beta/models/{model}:countTokens` for the
+     GEMINI one
+    """
+
+    GENERATE_CONTENT = 10
+    """
+    GENERATE_CONTENT is `POST /v1beta/models/{model}:generateContent`
+     as well as its streaming form
+     `POST /v1beta/models/{model}:streamGenerateContent`
+    """
+
+    EMBED_CONTENT = 11
+    """
+    EMBED_CONTENT is `POST /v1beta/models/{model}:embedContent` as well
+     as `POST /v1beta/models/{model}:batchEmbedContents`
+    """
+
+    CONVERSE = 12
+    """
+    CONVERSE is `POST /model/{model}/converse` as well as its streaming
+     form `POST /model/{model}/converse-stream`
+    """
+
+    INVOKE_MODEL = 13
+    """
+    INVOKE_MODEL is `POST /model/{model}/invoke` as well as its
+     streaming form `POST /model/{model}/invoke-with-response-stream`.
+     Note that its body is the native payload of whichever model the
+     request names rather than a shape that the protocol itself defines,
+     so Octelium does not parse it and the inference-specific Plugins are
+     a no-op for it.
+    """
+
+
 class ComponentLogEntryLevel(betterproto.Enum):
+    """Level is the severity level of the log entry"""
+
     LEVEL_UNSET = 0
+    """LEVEL_UNSET is not used"""
+
     DEBUG = 1
+    """DEBUG is the debug level"""
+
     INFO = 2
+    """INFO is the informational level"""
+
     WARN = 3
+    """WARN is the warning level"""
+
     ERROR = 4
+    """ERROR is the error level"""
+
     PANIC = 5
+    """PANIC is the panic level"""
+
     FATAL = 6
+    """FATAL is the fatal level"""
 
 
 class AuthenticatorSpecState(betterproto.Enum):
+    """State is the state of the Authenticator"""
+
     STATE_UNKNOWN = 0
     """STATE_UNKNOWN is not used"""
 
@@ -669,26 +2320,132 @@ class AuthenticatorSpecState(betterproto.Enum):
 
 
 class AuthenticatorStatusType(betterproto.Enum):
+    """Type is the type of the Authenticator"""
+
     TYPE_UNKNOWN = 0
+    """TYPE_UNKNOWN is not used"""
+
     FIDO = 1
+    """
+    FIDO means that the Authenticator is a FIDO/WebAuthn compliant
+     authenticator (e.g. a security key, a platform authenticator or a
+     software-based key)
+    """
+
     TOTP = 2
+    """
+    TOTP means that the Authenticator is a time-based one-time password
+     authenticator (e.g. Google Authenticator)
+    """
+
     TPM = 3
+    """
+    TPM means that the Authenticator uses TPM 2.0 to provide
+     hardware-based re-authentication for CLIENT Sessions
+    """
 
 
 class AuthenticatorStatusInfoFidoType(betterproto.Enum):
+    """Type is the attachment type of the FIDO Authenticator"""
+
     TYPE_UNKNOWN = 0
+    """TYPE_UNKNOWN is not used"""
+
     ROAMING = 1
+    """
+    ROAMING means that the Authenticator is a cross-platform/roaming
+     authenticator (e.g. a security key)
+    """
+
     PLATFORM = 2
+    """
+    PLATFORM means that the Authenticator is bound to the platform
+     (e.g. Windows Hello, Android)
+    """
+
+
+class AuthenticatorStatusInfoTotpAlgorithm(betterproto.Enum):
+    """
+    Algorithm is the HMAC algorithm used to generate the one-time
+     passwords
+    """
+
+    ALGORITHM_UNSET = 0
+    """ALGORITHM_UNSET is not used"""
+
+    SHA1 = 1
+    """SHA1 uses HMAC-SHA1"""
+
+    SHA256 = 2
+    """SHA256 uses HMAC-SHA256"""
+
+    SHA512 = 3
+    """SHA512 uses HMAC-SHA512"""
+
+
+class AuthenticatorStatusInfoTpmEndorsementVerification(betterproto.Enum):
+    """
+    Verification is the outcome of the verification of the endorsement
+     key certificate
+    """
+
+    VERIFICATION_UNKNOWN = 0
+    """
+    VERIFICATION_UNKNOWN is not used. It is also the value of the
+     Authenticators that were registered before the endorsement key
+     certificate verification was introduced.
+    """
+
+    VERIFIED = 1
+    """
+    VERIFIED means that the endorsement key certificate chained to a
+     trusted CA
+    """
+
+    FAILED = 2
+    """
+    FAILED means that the endorsement key certificate did not chain
+     to a trusted CA. It is only ever recorded whenever the mode did
+     not require the verification.
+    """
+
+    NOT_ATTEMPTED = 3
+    """
+    NOT_ATTEMPTED means that an endorsement key certificate was
+     presented while no trusted CAs were set
+    """
+
+    NO_CERTIFICATE = 4
+    """
+    NO_CERTIFICATE means that the TPM presented no endorsement key
+     certificate at all
+    """
 
 
 class GeoIpIpVersion(betterproto.Enum):
+    """IPVersion is the version of the IP address"""
+
     IP_VERSION_UNKNOWN = 0
+    """IP_VERSION_UNKNOWN is not used"""
+
     V4 = 1
+    """V4 means that the IP address is IPv4"""
+
     V6 = 2
+    """V6 means that the IP address is IPv6"""
 
 
 @dataclass(eq=False, repr=False)
 class Namespace(betterproto.Message):
+    """
+    Namespace is a logical grouping of Services according to a common
+     functionality (e.g. project names, environments such as production or
+     staging, regions, etc...). Every Service belongs to a single Namespace which
+     also acts as the parent domain of its Services' FQDNs. A Service that does
+     not explicitly specify a Namespace belongs to the `default` Namespace which
+     is automatically created upon the Cluster's installation.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -696,7 +2453,7 @@ class Namespace(betterproto.Message):
     """Kind is the resource name (i.e. `Namespace`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "NamespaceSpec" = betterproto.message_field(4)
     """Spec is the Namespace specification."""
@@ -707,12 +2464,14 @@ class Namespace(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class NamespaceSpec(betterproto.Message):
+    """Spec is the Namespace specification"""
+
     authorization: "NamespaceSpecAuthorization" = betterproto.message_field(1)
     """Authorization sets the authorization-related configuration"""
 
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(2)
     """
-    Attrs is a map user-defined attributes, mostly used in authorization
+    Attrs is a map of user-defined attributes, mostly used in authorization
      rules. It is strongly recommended to stick to camelCase in order to be
      conformant with Octelium's API naming conventions.
     """
@@ -720,6 +2479,11 @@ class NamespaceSpec(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class NamespaceSpecAuthorization(betterproto.Message):
+    """
+    Authorization sets the Policies that are applied to every Service owned
+     by the Namespace
+    """
+
     policies: List[str] = betterproto.string_field(1)
     """Policies is the list of standalone Policies"""
 
@@ -729,11 +2493,18 @@ class NamespaceSpecAuthorization(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class NamespaceStatus(betterproto.Message):
+    """Status is the current status of the Namespace"""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class NamespaceList(betterproto.Message):
+    """
+    NamespaceList is the list of Namespaces returned by the ListNamespace
+     method.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -741,7 +2512,7 @@ class NamespaceList(betterproto.Message):
     """Kind is the resource name (i.e. `NamespaceList`)."""
 
     items: List["Namespace"] = betterproto.message_field(3)
-    """Items is the list of Namespaces"""
+    """Items is the list of Namespaces."""
 
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
@@ -749,6 +2520,11 @@ class NamespaceList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class InlinePolicy(betterproto.Message):
+    """
+    InlinePolicy is a Policy that is defined inline within the resource that
+     attaches it instead of being created as a standalone Policy resource.
+    """
+
     name: str = betterproto.string_field(1)
     """Name is the name of the inline Policy"""
 
@@ -758,6 +2534,14 @@ class InlinePolicy(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class User(betterproto.Message):
+    """
+    User is an identity within the Cluster. A User is either a HUMAN who
+     authenticates via the Cluster's IdentityProviders, or a WORKLOAD (e.g. a
+     container, a server, a CI job, etc...) which authenticates via its
+     Credentials. Users are members of Groups and every successful
+     authentication of a User creates a Session.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -765,7 +2549,7 @@ class User(betterproto.Message):
     """Kind is the resource name (i.e. `User`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "UserSpec" = betterproto.message_field(4)
     """Spec is the User specification."""
@@ -776,20 +2560,17 @@ class User(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class UserSpec(betterproto.Message):
+    """Spec is the User specification"""
+
     groups: List[str] = betterproto.string_field(1)
-    """
-    Groups is the list of Group names that this User belongs to. You must not
-     add the `root` Group as it's only used by the `root` User or the `all`
-     Group as it's already added by the Cluster automatically.
-    """
+    """Groups is the list of Group names that this User belongs to."""
 
     email: str = betterproto.string_field(2)
     """
     Email sets the default e-mail for the User. It is used for User
      authentication if the IdentityProvider returns the email value in the
      authentication information (e.g. OIDC identity tokens, SAML 2.0
-     assertions or GitHub OAuth2). The e-mail is used as a fallback
-     authentication method if there are no User identity that matches in the
+     assertions or GitHub OAuth2).
     """
 
     type: "UserSpecType" = betterproto.enum_field(3)
@@ -806,17 +2587,26 @@ class UserSpec(betterproto.Message):
 
     is_disabled: bool = betterproto.bool_field(7)
     """
-    isDisabled de-activates/disables the User. Once disabled, the User
+    IsDisabled de-activates/disables the User. Once disabled, the User
      cannot interact with the Cluster or access its Services until this field
      is set to false again.
     """
 
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(8)
+    """
+    Attrs is a map of user-defined attributes, mostly used in authorization
+     rules. It is strongly recommended to stick to camelCase in order to be
+     conformant with Octelium's API naming conventions.
+    """
+
     authentication: "UserSpecAuthentication" = betterproto.message_field(9)
+    """Authentication sets the authentication-related configuration"""
 
 
 @dataclass(eq=False, repr=False)
 class UserSpecAuthorization(betterproto.Message):
+    """Authorization sets the Policies that are applied to the User"""
+
     policies: List[str] = betterproto.string_field(1)
     """Policies is the list of standalone Policies"""
 
@@ -826,19 +2616,25 @@ class UserSpecAuthorization(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class UserSpecAuthentication(betterproto.Message):
+    """Authentication sets how the User authenticates to the Cluster"""
+
     identities: List["UserSpecAuthenticationIdentity"] = betterproto.message_field(1)
     """Identities is the list of explicit User identities"""
 
     authenticator_default_state: "AuthenticatorSpecState" = betterproto.enum_field(2)
+    """
+    AuthenticatorDefaultState is the default state of a newly registered
+     Authenticator. It is typically used to require an explicit approval of
+     the User's Authenticators before they can be used.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class UserSpecAuthenticationIdentity(betterproto.Message):
+    """Identity is an identity of the User at a specific IdentityProvider"""
+
     identity_provider: str = betterproto.string_field(1)
-    """
-    Provider is the provider's name according to the Cluster
-     configuration.
-    """
+    """IdentityProvider is the IdentityProvider's name."""
 
     identifier: str = betterproto.string_field(2)
     """
@@ -850,6 +2646,8 @@ class UserSpecAuthenticationIdentity(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class UserSpecSession(betterproto.Message):
+    """Session sets the options of the Sessions created for the User"""
+
     client_duration: "__meta_v1__.Duration" = betterproto.message_field(1)
     """
     ClientDuration sets the Session duration used by clients after which
@@ -871,7 +2669,7 @@ class UserSpecSession(betterproto.Message):
     """RefreshTokenDuration sets the refresh token duration"""
 
     max_per_user: int = betterproto.uint32_field(5)
-    """MaxPerUser sets the max number of of Sessions per User"""
+    """MaxPerUser sets the max number of Sessions per User"""
 
     default_state: "SessionSpecState" = betterproto.enum_field(6)
     """DefaultState is the default state of a newly created Session"""
@@ -879,26 +2677,53 @@ class UserSpecSession(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class UserSpecInfo(betterproto.Message):
+    """Info is the personal information of the User"""
+
     locale: str = betterproto.string_field(1)
+    """Locale is the User's locale (e.g. "en-US")"""
+
     phone: str = betterproto.string_field(2)
+    """Phone is the User's phone number"""
+
     first_name: str = betterproto.string_field(3)
+    """FirstName is the User's first/given name"""
+
     middle_name: str = betterproto.string_field(4)
+    """MiddleName is the User's middle name"""
+
     last_name: str = betterproto.string_field(5)
+    """LastName is the User's last/family name"""
+
     website: str = betterproto.string_field(6)
+    """Website is the URL of the User's website"""
+
     country: str = betterproto.string_field(7)
+    """Country is the User's country"""
 
 
 @dataclass(eq=False, repr=False)
 class UserStatus(betterproto.Message):
+    """Status is the current status of the User"""
+
     ext: Dict[str, "betterproto_lib_google_protobuf.Struct"] = betterproto.map_field(
         1, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """Ext is a map of internal Cluster-managed extension data."""
+
     identity_provider_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    IdentityProviderRef is the reference of the IdentityProvider that
+     provisioned the User.
+    """
+
     is_locked: bool = betterproto.bool_field(3)
+    """IsLocked indicates whether the User is locked by the Cluster."""
 
 
 @dataclass(eq=False, repr=False)
 class UserList(betterproto.Message):
+    """UserList is the list of Users returned by the ListUser method."""
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -914,6 +2739,18 @@ class UserList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Service(betterproto.Message):
+    """
+    Service represents a protected upstream resource (e.g. a web application,
+     an API, an SSH server, a database, a Kubernetes cluster, etc...) inside the
+     Cluster. A Service is implemented by Vigil, an identity-aware proxy (IaP)
+     that understands the application-layer protocol of the upstream and provides
+     access control, secretless access, dynamic configuration as well as
+     application-layer visibility and access logging. Every Service belongs to a
+     single Namespace and has the private FQDN
+     `<SERVICE>.<NAMESPACE>.local.<DOMAIN>` and, when publicly exposed, the
+     public FQDN `<SERVICE>.<NAMESPACE>.<DOMAIN>`.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -921,7 +2758,7 @@ class Service(betterproto.Message):
     """Kind is the resource name (i.e. `Service`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "ServiceSpec" = betterproto.message_field(4)
     """Spec is the Service specification."""
@@ -932,6 +2769,8 @@ class Service(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpec(betterproto.Message):
+    """Spec is the Service specification"""
+
     port: int = betterproto.uint32_field(1)
     """
     Port is the port number used by the listener. If not set, Octelium will
@@ -982,7 +2821,7 @@ class ServiceSpec(betterproto.Message):
     """
 
     deployment: "ServiceSpecDeployment" = betterproto.message_field(9)
-    """Deployment sets The Service's underlying deployment configurations."""
+    """Deployment sets the Service's underlying deployment configurations."""
 
     is_disabled: bool = betterproto.bool_field(10)
     """
@@ -991,15 +2830,23 @@ class ServiceSpec(betterproto.Message):
     """
 
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(12)
+    """
+    Attrs is a map of user-defined attributes, mostly used in authorization
+     rules. It is strongly recommended to stick to camelCase in order to be
+     conformant with Octelium's API naming conventions.
+    """
+
     region: str = betterproto.string_field(13)
     """
-    Region explicitly sets the Region name in which the Service is
-     deployed.By default, a Service is deployed in the "default" Region.
+    Region explicitly sets the Region name in which the Service is deployed.
+     By default, a Service is deployed in the "default" Region.
     """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecAuthorization(betterproto.Message):
+    """Authorization sets the Policies that are applied to the Service"""
+
     policies: List[str] = betterproto.string_field(1)
     """Policies is the list of standalone Policies"""
 
@@ -1007,10 +2854,24 @@ class ServiceSpecAuthorization(betterproto.Message):
     """InlinePolicies is the list of inline Policies"""
 
     enable_anonymous: bool = betterproto.bool_field(3)
+    """
+    EnableAnonymous enables authorization for anonymous Services (i.e.
+     Services whose isAnonymous field is enabled). By default, an anonymous
+     Service enforces no authorization at all. Once enabled, the Policies
+     of the Service are evaluated for the anonymous requests and, as it is
+     the case with the authenticated authorization, a request that matches
+     no rule is denied.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfig(betterproto.Message):
+    """
+    Config is the Service configuration. It contains the upstream
+     information as well as the configuration that is specific to the
+     application-layer protocol used by the Service.
+    """
+
     name: str = betterproto.string_field(1)
     """
     Name is a unique name the describes the Config. Only needed for Configs
@@ -1038,6 +2899,11 @@ class ServiceSpecConfig(betterproto.Message):
     """Parent is the name of the parent configuration"""
 
     tls: "ServiceSpecConfigTls" = betterproto.message_field(10)
+    """
+    TLS sets the TLS client-side configuration used by the Service to
+     connect to an upstream that is listening over TLS.
+    """
+
     http: "ServiceSpecConfigHttp" = betterproto.message_field(4, group="type")
     """HTTP sets HTTP-specific configuration"""
 
@@ -1055,9 +2921,26 @@ class ServiceSpecConfig(betterproto.Message):
     )
     """Kubernetes sets Kubernetes-specific configuration"""
 
+    socks5: "ServiceSpecConfigSocks5" = betterproto.message_field(11, group="type")
+    """SOCKS5 sets SOCKS5-specific configuration"""
+
+    rdp: "ServiceSpecConfigRdp" = betterproto.message_field(12, group="type")
+    """RDP sets RDP-specific configuration"""
+
+    mcp: "ServiceSpecConfigMcp" = betterproto.message_field(13, group="type")
+    """MCP sets Model Context Protocol-specific configuration"""
+
+    llm: "ServiceSpecConfigLlm" = betterproto.message_field(14, group="type")
+    """LLM sets LLM-gateway-specific configuration"""
+
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttp(betterproto.Message):
+    """
+    HTTP sets the HTTP-specific configuration. It is used by every
+     HTTP-based Service mode (i.e. HTTP, WEB and GRPC).
+    """
+
     auth: "ServiceSpecConfigHttpAuth" = betterproto.message_field(1)
     """Auth sets authentication-to-upstream specific configuration"""
 
@@ -1110,14 +2993,26 @@ class ServiceSpecConfigHttp(betterproto.Message):
     """Visibility sets the visibility/access logging specific options"""
 
     retry: "ServiceSpecConfigHttpRetry" = betterproto.message_field(12)
+    """Retry sets the retrying of the failed upstream requests"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpCors(betterproto.Message):
+    """
+    CORS sets the Cross-Origin Resource Sharing options which are needed
+     to access the Service from a browser-based application that is
+     served at a different origin
+    """
+
     allow_origin_string_match: List[str] = betterproto.string_field(1)
     """
-    AllowOriginStringMatch is the list of  patterns that match
-     allowed origins.
+    AllowOriginStringMatch is the list of the allowed origins. An
+     entry is either an exact origin (e.g. "https://example.com") or a
+     `*` which allows every origin. A request whose Origin matches the
+     Service's own origin is always allowed and it does not need to be
+     listed here. Note that Octelium always responds with the request's
+     own Origin rather than with a literal `*` since the browsers
+     reject a wildcard whenever the request carries credentials.
     """
 
     allow_methods: str = betterproto.string_field(2)
@@ -1150,16 +3045,39 @@ class ServiceSpecConfigHttpCors(betterproto.Message):
      credentials.
     """
 
+    allow_cluster_services: bool = betterproto.bool_field(7)
+    """
+    AllowClusterServices allows the origins of the Cluster's own
+     Services (i.e. the Cluster domain itself as well as any of its
+     subdomains at any depth, over HTTPS only) in addition to the
+     origins that are set in `allowOriginStringMatch`. Credentials are
+     always allowed for such origins regardless of `allowCredentials`
+     since the Cluster's Services authenticate the browsers with the
+     `octelium_auth` Cookie. This is needed to access the Service from
+     the Cluster's own web console (e.g. the MCP and LLM playgrounds).
+     Note that enabling this effectively trusts every Service in the
+     Cluster since a browser-based application served by any of them
+     can then read this Service's responses on behalf of the browsing
+     User.
+    """
+
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuth(betterproto.Message):
+    """
+    Auth sets the application-layer credentials that are injected by
+     the Service on-the-fly to authenticate to the upstream. This
+     provides secretless access where the credentials are never shared
+     with the Users.
+    """
+
     bearer: "ServiceSpecConfigHttpAuthBearer" = betterproto.message_field(
         1, group="type"
     )
     """Bearer sets bearer authentication details"""
 
     basic: "ServiceSpecConfigHttpAuthBasic" = betterproto.message_field(2, group="type")
-    """Basis sets basic authentication details"""
+    """Basic sets basic authentication details"""
 
     custom: "ServiceSpecConfigHttpAuthCustom" = betterproto.message_field(
         3, group="type"
@@ -1180,11 +3098,22 @@ class ServiceSpecConfigHttpAuth(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthBearer(betterproto.Message):
+    """
+    Bearer is the bearer token that is set in the `Authorization`
+     request header
+    """
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the bearer token
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthBasic(betterproto.Message):
+    """Basic is the HTTP basic authentication credentials"""
+
     username: str = betterproto.string_field(1)
     """Username is the username value of HTTP basic authentication"""
 
@@ -1194,11 +3123,19 @@ class ServiceSpecConfigHttpAuthBasic(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthBasicPassword(betterproto.Message):
+    """Password is the password value of HTTP basic authentication"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the Password
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthCustom(betterproto.Message):
+    """Custom is a credential that is set in a custom request header"""
+
     header: str = betterproto.string_field(1)
     """Header is the name of the HTTP header (e.g. "X-Custom-Auth")"""
 
@@ -1208,11 +3145,22 @@ class ServiceSpecConfigHttpAuthCustom(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthCustomValue(betterproto.Message):
+    """Value is the value of the custom request header"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the header's Value
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthOAuth2ClientCredentials(betterproto.Message):
+    """
+    OAuth2ClientCredentials authenticates to the upstream via the
+     standard OAuth2 client credentials flow
+    """
+
     client_id: str = betterproto.string_field(1)
     """ClientID sets the OAuth2 client ID"""
 
@@ -1230,26 +3178,61 @@ class ServiceSpecConfigHttpAuthOAuth2ClientCredentials(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthOAuth2ClientCredentialsClientSecret(betterproto.Message):
+    """ClientSecret is the OAuth2 client secret"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the ClientSecret
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthSigv4(betterproto.Message):
+    """
+    Sigv4 computes and injects AWS Signature Version 4 signatures
+     on-the-fly for a Sigv4-compliant upstream API
+    """
+
     access_key_id: str = betterproto.string_field(1)
+    """AccessKeyID is the AWS access key ID"""
+
     secret_access_key: "ServiceSpecConfigHttpAuthSigv4SecretAccessKey" = (
         betterproto.message_field(2)
     )
+    """SecretAccessKey is the AWS secret access key"""
+
     region: str = betterproto.string_field(3)
+    """
+    Region is the AWS region of the upstream API (e.g.
+     "eu-central-1")
+    """
+
     service: str = betterproto.string_field(4)
+    """
+    Service is the AWS service of the upstream API (e.g. "lambda",
+     "s3")
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpAuthSigv4SecretAccessKey(betterproto.Message):
+    """SecretAccessKey is the AWS secret access key"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the SecretAccessKey
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPath(betterproto.Message):
+    """
+    Path sets the manipulation of the request path that is forwarded to
+     the upstream
+    """
+
     add_prefix: str = betterproto.string_field(1)
     """AddPrefix adds a prefix to the request path."""
 
@@ -1263,27 +3246,46 @@ class ServiceSpecConfigHttpPath(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpBody(betterproto.Message):
+    """
+    Body sets the request body-specific options. It requires
+     enableRequestBuffering to be enabled.
+    """
+
     mode: "ServiceSpecConfigHttpBodyMode" = betterproto.enum_field(1)
+    """Mode sets the expected format of the request body"""
+
     max_request_size: int = betterproto.uint32_field(2)
     """MaxRequestSize sets the max body request byte size."""
 
     validation: "ServiceSpecConfigHttpBodyValidation" = betterproto.message_field(3)
+    """Validation sets the validation of the request body content"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpBodyValidation(betterproto.Message):
+    """
+    Validation validates the content of the request body. A request
+     whose body is invalid is rejected with a status code of `400`.
+    """
+
     json_schema: "ServiceSpecConfigHttpBodyValidationJsonSchema" = (
         betterproto.message_field(1, group="type")
     )
+    """JSONSchema validates the request body against a JSON schema"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpBodyValidationJsonSchema(betterproto.Message):
+    """JSONSchema validates the request body against a JSON schema"""
+
     inline: str = betterproto.string_field(1, group="type")
+    """Inline is the JSON schema itself"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpHeader(betterproto.Message):
+    """Header sets the manipulation of the request and response headers"""
+
     add_request_headers: List["ServiceSpecConfigHttpHeaderKeyValue"] = (
         betterproto.message_field(1)
     )
@@ -1312,6 +3314,8 @@ class ServiceSpecConfigHttpHeader(betterproto.Message):
     """Forwarded handles the forwarded request header."""
 
     host: "ServiceSpecConfigHttpHeaderHost" = betterproto.message_field(6)
+    """Host sets the Host request header forwarded to the upstream"""
+
     authorization_mode: "ServiceSpecConfigHttpHeaderAuthorizationMode" = (
         betterproto.enum_field(7)
     )
@@ -1326,6 +3330,8 @@ class ServiceSpecConfigHttpHeader(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpHeaderKeyValue(betterproto.Message):
+    """KeyValue is a header that is added to the request or the response"""
+
     key: str = betterproto.string_field(1)
     """Key is the header's name."""
 
@@ -1333,6 +3339,11 @@ class ServiceSpecConfigHttpHeaderKeyValue(betterproto.Message):
     """Value is the header's value."""
 
     eval: str = betterproto.string_field(4, group="type")
+    """
+    Eval sets the header's value to the result of a CEL expression
+     that is evaluated against the request context.
+    """
+
     append: bool = betterproto.bool_field(3)
     """
     Append appends the header value instead of
@@ -1342,193 +3353,523 @@ class ServiceSpecConfigHttpHeaderKeyValue(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpHeaderHost(betterproto.Message):
+    """
+    Host sets the `Host` request header that is forwarded to the
+     upstream. By default, the Host header is rewritten to the
+     upstream's real host (i.e. the host of the Upstream's URL).
+    """
+
     preserve: bool = betterproto.bool_field(1, group="type")
+    """
+    Preserve preserves the Host header by using the Service's own
+     FQDN as its value.
+    """
+
     value: str = betterproto.string_field(2, group="type")
+    """Value explicitly sets the Host header's value"""
+
     eval: str = betterproto.string_field(3, group="type")
+    """
+    Eval sets the Host header's value to the result of a CEL
+     expression that is evaluated against the request context.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpResponse(betterproto.Message):
+    """Response sets the response-specific configuration"""
+
     direct: "ServiceSpecConfigHttpResponseDirect" = betterproto.message_field(
         1, group="type"
     )
+    """
+    Direct returns a response directly without proxying the request
+     to the upstream
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpResponseDirect(betterproto.Message):
+    """
+    Direct returns a response directly from the Service without
+     proxying the request to the upstream
+    """
+
     status_code: int = betterproto.int32_field(1)
+    """StatusCode is the status code of the returned response"""
+
     content_type: str = betterproto.string_field(2)
+    """
+    ContentType is the value of the `Content-Type` response header
+     (e.g. "image/png")
+    """
+
     inline: str = betterproto.string_field(3, group="type")
+    """Inline is the response body as a string"""
+
     inline_bytes: bytes = betterproto.bytes_field(4, group="type")
+    """InlineBytes is the response body as raw bytes"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpRetry(betterproto.Message):
+    """
+    Retry sets the retrying of the failed upstream requests. Retrying is
+     disabled by default. The Service uses an exponential backoff that
+     starts with the initialInterval duration which is multiplied on each
+     retry by the multiplier until it reaches the maxInterval duration.
+    """
+
     max_retries: int = betterproto.uint32_field(1)
+    """MaxRetries is the maximum number of retries"""
+
     initial_interval: "__meta_v1__.Duration" = betterproto.message_field(2)
+    """
+    InitialInterval is the duration of the backoff before the first
+     retry
+    """
+
     max_interval: "__meta_v1__.Duration" = betterproto.message_field(3)
+    """
+    MaxInterval is the upper bound of the backoff duration between the
+     retries
+    """
+
     max_elapsed_time: "__meta_v1__.Duration" = betterproto.message_field(4)
+    """
+    MaxElapsedTime is the deadline after which no further retries are
+     performed
+    """
+
     multiplier: float = betterproto.float_field(5)
+    """
+    Multiplier is the floating point value by which the backoff
+     duration is multiplied on each retry
+    """
+
     status_codes: List[int] = betterproto.int32_field(6)
+    """
+    StatusCodes is the list of the response status codes that are
+     retried. By default, the Service currently retries on the 502, 503
+     and 504 status codes.
+    """
+
     retry_on_server_errors: bool = betterproto.bool_field(7)
+    """
+    RetryOnServerErrors additionally retries on every 5xx response
+     status code.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPlugin(betterproto.Message):
+    """
+    Plugin provides a more advanced and dynamic way to manipulate the
+     HTTP requests and responses. A Service can have one or more Plugins,
+     including multiple Plugins of the same type.
+    """
+
     name: str = betterproto.string_field(1)
+    """Name is the unique name of the Plugin"""
+
     is_disabled: bool = betterproto.bool_field(2)
+    """
+    IsDisabled disables the Plugin without having to change its
+     Condition or to delete it.
+    """
+
     phase: "ServiceSpecConfigHttpPluginPhase" = betterproto.enum_field(3)
+    """
+    Phase sets whether the Plugin is invoked before or after the
+     authentication and authorization processes
+    """
+
     condition: "Condition" = betterproto.message_field(4)
+    """
+    Condition decides whether the Plugin is invoked on a per-request
+     basis
+    """
+
     ext_proc: "ServiceSpecConfigHttpPluginExtProc" = betterproto.message_field(
         5, group="type"
     )
+    """
+    ExtProc processes the requests via an Envoy ext_proc compliant
+     gRPC server
+    """
+
     lua: "ServiceSpecConfigHttpPluginLua" = betterproto.message_field(6, group="type")
+    """Lua processes the requests via a Lua script"""
+
     direct: "ServiceSpecConfigHttpPluginDirect" = betterproto.message_field(
         7, group="type"
     )
+    """
+    Direct returns a response directly without proxying the request
+     to the upstream
+    """
+
     rate_limit: "ServiceSpecConfigHttpPluginRateLimit" = betterproto.message_field(
         8, group="type"
     )
+    """RateLimit rate limits the requests"""
+
     cache: "ServiceSpecConfigHttpPluginCache" = betterproto.message_field(
         9, group="type"
     )
+    """Cache returns globally cached responses"""
+
     json_schema: "ServiceSpecConfigHttpPluginJsonSchema" = betterproto.message_field(
         10, group="type"
     )
+    """JSONSchema validates the JSON request body against a JSON schema"""
+
     path: "ServiceSpecConfigHttpPluginPath" = betterproto.message_field(
         11, group="type"
     )
+    """Path removes and/or adds prefixes of the request path"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginExtProc(betterproto.Message):
+    """
+    ExtProc processes the requests via an external gRPC server that is
+     compliant with Envoy's ext_proc protocol. Vigil acts as the
+     ext_proc gRPC client that sends a ProcessingRequest and waits for
+     a ProcessingResponse on every request.
+    """
+
     address: str = betterproto.string_field(1, group="type")
+    """
+    Address is the address of the ext_proc gRPC server (e.g.
+     "ext-proc.default.svc:8080")
+    """
+
     container: "ServiceSpecConfigHttpPluginExtProcContainer" = (
         betterproto.message_field(2, group="type")
     )
+    """
+    Container serves the ext_proc gRPC server from a managed
+     container
+    """
+
     processing_mode: "ServiceSpecConfigHttpPluginExtProcProcessingMode" = (
         betterproto.message_field(3)
     )
+    """
+    ProcessingMode sets which parts of the request and the response
+     are sent to the ext_proc server
+    """
+
     message_timeout: "__meta_v1__.Duration" = betterproto.message_field(4)
+    """
+    MessageTimeout is the duration after which a message sent to the
+     ext_proc server times out
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginExtProcContainer(betterproto.Message):
+    """
+    Container is a managed container that serves the ext_proc gRPC
+     server
+    """
+
     image: str = betterproto.string_field(1)
+    """Image is the image URL of the container"""
+
     port: int = betterproto.int32_field(2)
+    """Port is the port at which the ext_proc gRPC server listens"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginExtProcProcessingMode(betterproto.Message):
+    """
+    ProcessingMode sets which parts of the request and the response
+     are sent to the ext_proc server
+    """
+
     request_header_mode: (
         "ServiceSpecConfigHttpPluginExtProcProcessingModeHeaderSendMode"
     ) = betterproto.enum_field(1)
+    """
+    RequestHeaderMode sets whether the request headers are sent to
+     the ext_proc server
+    """
+
     response_header_mode: (
         "ServiceSpecConfigHttpPluginExtProcProcessingModeHeaderSendMode"
     ) = betterproto.enum_field(2)
+    """
+    ResponseHeaderMode sets whether the response headers are sent
+     to the ext_proc server
+    """
+
     request_body_mode: (
         "ServiceSpecConfigHttpPluginExtProcProcessingModeBodySendMode"
     ) = betterproto.enum_field(3)
+    """
+    RequestBodyMode sets whether the request body is sent to the
+     ext_proc server
+    """
+
     response_body_mode: (
         "ServiceSpecConfigHttpPluginExtProcProcessingModeBodySendMode"
     ) = betterproto.enum_field(4)
+    """
+    ResponseBodyMode sets whether the response body is sent to the
+     ext_proc server
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginLua(betterproto.Message):
+    """
+    Lua invokes a Lua script that can define an `onRequest` function
+     which is invoked upon receiving the request before proxying it to
+     the upstream, and an `onResponse` function which is invoked upon
+     receiving the response from the upstream. A function that is not
+     defined is silently skipped.
+    """
+
     inline: str = betterproto.string_field(1, group="type")
+    """Inline is the Lua script itself"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginDirect(betterproto.Message):
+    """
+    Direct returns a response directly without proxying the request to
+     the upstream
+    """
+
     status_code: int = betterproto.int32_field(1)
+    """StatusCode is the status code of the returned response"""
+
     body: "ServiceSpecConfigHttpPluginDirectBody" = betterproto.message_field(2)
+    """Body is the body of the returned response"""
+
     headers: List["ServiceSpecConfigHttpPluginDirectKeyValue"] = (
         betterproto.message_field(3)
     )
+    """
+    Headers is the list of the headers that are set in the returned
+     response
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginDirectBody(betterproto.Message):
+    """Body is the body of the returned response"""
+
     inline: str = betterproto.string_field(1, group="type")
+    """Inline is the response body as a string"""
+
     inline_bytes: bytes = betterproto.bytes_field(2, group="type")
+    """InlineBytes is the response body as raw bytes"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginDirectKeyValue(betterproto.Message):
+    """KeyValue is a header that is set in the returned response"""
+
     key: str = betterproto.string_field(1)
+    """Key is the header's name"""
+
     value: str = betterproto.string_field(2)
+    """Value is the header's value"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginRateLimit(betterproto.Message):
+    """
+    RateLimit provides a global sliding-window rate limiting mechanism
+     that is backed by the Cluster's Redis store
+    """
+
     status_code: int = betterproto.int32_field(2)
+    """
+    StatusCode is the status code that is returned once the rate
+     limit is exceeded. It is 429 by default.
+    """
+
     body: "ServiceSpecConfigHttpPluginRateLimitBody" = betterproto.message_field(3)
+    """
+    Body is the body of the response that is returned once the rate
+     limit is exceeded
+    """
+
     key: "ServiceSpecConfigHttpPluginRateLimitKey" = betterproto.message_field(4)
+    """Key sets the key by which the requests are counted"""
+
     limit: int = betterproto.int64_field(5)
+    """
+    Limit is the maximum number of requests that are allowed within
+     the window
+    """
+
     window: "__meta_v1__.Duration" = betterproto.message_field(6)
+    """Window is the duration of the sliding window"""
+
     headers: List["ServiceSpecConfigHttpPluginRateLimitKeyValue"] = (
         betterproto.message_field(7)
     )
+    """
+    Headers is the list of the headers that are set in the response
+     that is returned once the rate limit is exceeded
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginRateLimitBody(betterproto.Message):
+    """
+    Body is the body of the response that is returned once the rate
+     limit is exceeded
+    """
+
     inline: str = betterproto.string_field(1, group="type")
+    """Inline is the response body as a string"""
+
     inline_bytes: bytes = betterproto.bytes_field(2, group="type")
+    """InlineBytes is the response body as raw bytes"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginRateLimitKey(betterproto.Message):
+    """
+    Key is the key by which the requests are counted. By default,
+     the rate limit is applied on a per-Session basis.
+    """
+
     eval: str = betterproto.string_field(1, group="type")
+    """
+    Eval sets the key to the result of a CEL expression that is
+     evaluated against the request context.
+    """
+
     per_session: bool = betterproto.bool_field(2, group="type")
+    """PerSession applies the rate limit on a per-Session basis"""
+
     per_user: bool = betterproto.bool_field(3, group="type")
+    """PerUser applies the rate limit on a per-User basis"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginRateLimitKeyValue(betterproto.Message):
+    """KeyValue is a header that is set in the returned response"""
+
     key: str = betterproto.string_field(1)
+    """Key is the header's name"""
+
     value: str = betterproto.string_field(2)
+    """Value is the header's value"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginCache(betterproto.Message):
+    """
+    Cache returns globally cached responses that are stored in the
+     Cluster's Redis store
+    """
+
     key: "ServiceSpecConfigHttpPluginCacheKey" = betterproto.message_field(1)
+    """Key sets the key of the cache entry"""
+
     ttl: "__meta_v1__.Duration" = betterproto.message_field(2)
+    """TTL is the duration after which a cache entry expires"""
+
     max_size: int = betterproto.uint64_field(3)
+    """
+    MaxSize is the maximum size in bytes of a response that can be
+     cached
+    """
+
     use_x_cache_header: bool = betterproto.bool_field(4)
+    """
+    UseXCacheHeader sets the `X-Cache` response header to indicate
+     whether the response was served from the cache.
+    """
+
     allow_unsafe_methods: bool = betterproto.bool_field(5)
+    """
+    AllowUnsafeMethods additionally caches the responses of the HTTP
+     methods other than GET and HEAD which are the only cached
+     methods by default.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginCacheKey(betterproto.Message):
+    """
+    Key is the key of the cache entry. By default, the request URI
+     (i.e. the path and the query parameters) is used as the key on a
+     per-Service basis.
+    """
+
     eval: str = betterproto.string_field(1, group="type")
+    """
+    Eval sets the key to the result of a CEL expression that is
+     evaluated against the request context.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginJsonSchema(betterproto.Message):
+    """JSONSchema validates the JSON request body against a JSON schema"""
+
     inline: str = betterproto.string_field(1, group="type")
+    """Inline is the JSON schema itself"""
+
     status_code: int = betterproto.int32_field(2)
+    """
+    StatusCode is the status code that is returned once the
+     validation fails
+    """
+
     body: "ServiceSpecConfigHttpPluginJsonSchemaBody" = betterproto.message_field(3)
+    """
+    Body is the body of the response that is returned once the
+     validation fails
+    """
+
     headers: List["ServiceSpecConfigHttpPluginJsonSchemaKeyValue"] = (
         betterproto.message_field(4)
     )
+    """
+    Headers is the list of the headers that are set in the response
+     that is returned once the validation fails
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginJsonSchemaBody(betterproto.Message):
+    """
+    Body is the body of the response that is returned once the
+     validation fails
+    """
+
     inline: str = betterproto.string_field(1, group="type")
+    """Inline is the response body as a string"""
+
     inline_bytes: bytes = betterproto.bytes_field(2, group="type")
+    """InlineBytes is the response body as raw bytes"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginJsonSchemaKeyValue(betterproto.Message):
+    """KeyValue is a header that is set in the returned response"""
+
     key: str = betterproto.string_field(1)
+    """Key is the header's name"""
+
     value: str = betterproto.string_field(2)
+    """Value is the header's value"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpPluginPath(betterproto.Message):
+    """Path removes and/or adds prefixes of the request path"""
+
     add_prefix: str = betterproto.string_field(1)
     """AddPrefix adds a prefix to the request path."""
 
@@ -1542,6 +3883,8 @@ class ServiceSpecConfigHttpPluginPath(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigHttpVisibility(betterproto.Message):
+    """Visibility sets the HTTP-specific access logging configuration"""
+
     enable_request_body: bool = betterproto.bool_field(1)
     """Capture the request body"""
 
@@ -1555,15 +3898,2079 @@ class ServiceSpecConfigHttpVisibility(betterproto.Message):
     """Capture the response body map, currently JSON"""
 
     include_request_headers: List[str] = betterproto.string_field(5)
+    """
+    IncludeRequestHeaders is the list of the request headers that are
+     recorded in the AccessLogs.
+    """
+
     include_response_headers: List[str] = betterproto.string_field(6)
+    """
+    IncludeResponseHeaders is the list of the response headers that
+     are recorded in the AccessLogs.
+    """
+
     include_all_request_headers: bool = betterproto.bool_field(7)
+    """
+    IncludeAllRequestHeaders records every request header in the
+     AccessLogs except for the ones set in excludeRequestHeaders.
+    """
+
     include_all_response_headers: bool = betterproto.bool_field(8)
+    """
+    IncludeAllResponseHeaders records every response header in the
+     AccessLogs except for the ones set in excludeResponseHeaders.
+    """
+
     exclude_request_headers: List[str] = betterproto.string_field(9)
+    """
+    ExcludeRequestHeaders is the list of the request headers that are
+     never recorded in the AccessLogs.
+    """
+
     exclude_response_headers: List[str] = betterproto.string_field(10)
+    """
+    ExcludeResponseHeaders is the list of the response headers that
+     are never recorded in the AccessLogs.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigMcp(betterproto.Message):
+    """
+    MCP sets the Model Context Protocol-specific configuration. MCP
+     Services are HTTP-based: they reuse the entire HTTP dataplane and
+     additionally understand the MCP JSON-RPC semantics.
+    """
+
+    endpoint: str = betterproto.string_field(1)
+    """
+    Endpoint is the canonical MCP endpoint path (e.g. `/mcp`) that is
+     served to the downstreams. Any request whose path does not exactly
+     match it is rejected. If not set, which is the default, every
+     request path is accepted. Note that this field validates the
+     downstream request path, it does not set the upstream one. Since MCP
+     is a single endpoint protocol, the path of the upstream URL entirely
+     replaces the request path that is proxied to the upstream. For
+     instance, an upstream URL of `https://example.com/api/mcp` proxies
+     every request to `/api/mcp` regardless of the downstream path. This
+     is needed since many MCP servers are served at a path that differs
+     from the one that the Service serves to its downstreams. Whenever
+     the upstream URL carries no path at all, which is the default, the
+     downstream request path is proxied to the upstream as is. This is
+     needed since many MCP servers are served at the root path. This field
+     has to be set in the "default" or global Configuration (as opposed to
+     named dynamic Configs) in order to actually work.
+    """
+
+    protocol: "ServiceSpecConfigMcpProtocol" = betterproto.message_field(2)
+    """
+    Protocol sets the MCP protocol validation options. These fields have
+     to be set in the "default" or global Configuration (as opposed to
+     named dynamic Configs) in order to actually work.
+    """
+
+    limits: "ServiceSpecConfigMcpLimits" = betterproto.message_field(3)
+    """
+    Limits sets the MCP request parsing limits. These fields have to be
+     set in the "default" or global Configuration (as opposed to named
+     dynamic Configs) in order to actually work.
+    """
+
+    auth: "ServiceSpecConfigHttpAuth" = betterproto.message_field(4)
+    """Auth sets authentication-to-upstream specific configuration"""
+
+    header: "ServiceSpecConfigHttpHeader" = betterproto.message_field(5)
+    """
+    Header sets request and response header manipulation options. Note
+     that the MCP reserved headers (i.e. `MCP-Protocol-Version`,
+     `Mcp-Method`, `Mcp-Name` and `Mcp-Param-*`) can be manipulated here
+     too. Octelium never uses them to make authorization decisions, which
+     are always made from the JSON-RPC request body itself, however the
+     upstream MCP server rejects the requests whose headers do not match
+     the body.
+    """
+
+    path: "ServiceSpecConfigHttpPath" = betterproto.message_field(6)
+    """Path sets the upstream request path options"""
+
+    plugins: List["ServiceSpecConfigMcpPlugin"] = betterproto.message_field(7)
+    """
+    Plugins is the list of the Plugins of the Service. Unlike the
+     fields of this Configuration, which apply to every request that the
+     Configuration serves, every Plugin carries its own Condition which
+     decides whether that Plugin is invoked for a specific request. Note
+     that a Plugin that rewrites the JSON-RPC request body (e.g. Lua,
+     ExtProc) should also rewrite the corresponding MCP reserved headers
+     whenever the downstream sets them, otherwise the upstream MCP server
+     rejects the request since the headers no longer match the body.
+     Note that this list used to be a list of the HTTP mode's own
+     Plugins. The MCP Plugin keeps the same field names and the same
+     field numbers for every Plugin type that the two modes share, so
+     the Plugins that were already valid for an MCP Service are
+     unaffected. The Cache Plugin, which was already rejected for the
+     MCP Services, is the only removed type.
+    """
+
+    is_upstream_http2: bool = betterproto.bool_field(8)
+    """
+    IsUpstreamHTTP2 sets HTTP connections to the upstream to HTTP/2. Not
+     enabled by default.
+    """
+
+    listen_http2: bool = betterproto.bool_field(9)
+    """
+    ListenHTTP2 sets the Service to listen to HTTP 2.0 connections. This
+     is only enabled by default for Services using TLS. This field has to
+     be enabled in the "default" or global Configuration (as opposed to
+     named dynamic Configs) in order to actually work.
+    """
+
+    visibility: "ServiceSpecConfigMcpVisibility" = betterproto.message_field(10)
+    """Visibility sets the visibility/access logging specific options"""
+
+    cors: "ServiceSpecConfigHttpCors" = betterproto.message_field(11)
+    """
+    CORS sets the Cross-Origin Resource Sharing options which are needed
+     to access the Service from a browser-based application served at a
+     different origin (e.g. the Cluster's own web dashboard). An Origin
+     that is allowed here is also accepted by the Origin request header
+     validation. This field has to be set in the "default" or global
+     Configuration (as opposed to named dynamic Configs) in order to
+     actually work since the CORS preflight requests carry no identity.
+    """
+
+    disable_origin_check: bool = betterproto.bool_field(12)
+    """
+    DisableOriginCheck disables the `Origin` request header validation
+     entirely. The validation rejects any request whose Origin is neither
+     the Service's own origin nor an origin that is allowed by the `cors`
+     field. Requests that carry no Origin request header at all, which is
+     the case for nearly every non-browser MCP client (e.g. IDEs, AI
+     agents, CLI tools), are always accepted. This field has to be set in
+     the "default" or global Configuration (as opposed to named dynamic
+     Configs) in order to actually work.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigMcpProtocol(betterproto.Message):
+    """Protocol sets the MCP protocol validation options"""
+
+    versions: List[str] = betterproto.string_field(1)
+    """
+    Versions is an optional allowlist of the accepted MCP protocol
+     versions (e.g. "2026-07-28"). If not set, which is the default,
+     every version is accepted. Octelium does not maintain its own set
+     of supported MCP protocol versions.
+    """
+
+    require_version: bool = betterproto.bool_field(2)
+    """
+    RequireVersion rejects the requests that do not declare a protocol
+     version in either the `MCP-Protocol-Version` request header or the
+     request body's `_meta` field. It is disabled by default since the
+     header was only introduced in the 2025-06-18 revision.
+    """
+
+    reject_unknown_methods: bool = betterproto.bool_field(3)
+    """
+    RejectUnknownMethods rejects any JSON-RPC method that is unknown
+     to Octelium. It is disabled by default. Keeping it disabled lets
+     the official MCP extensions as well as the newer protocol
+     revisions reach the upstream while still being visible to Policies
+     via the `ctx.request.mcp.method` field.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigMcpLimits(betterproto.Message):
+    """Limits sets the MCP request parsing limits"""
+
+    max_request_bytes: int = betterproto.uint32_field(1)
+    """
+    MaxRequestBytes is the maximum size in bytes of the JSON-RPC
+     request body that is buffered and parsed. Zero uses the default
+     value. This value is always bounded by an internal hard limit.
+    """
+
+    max_stream_event_bytes: int = betterproto.uint32_field(2)
+    """
+    MaxStreamEventBytes is the maximum size in bytes of a single
+     `text/event-stream` response event that is parsed. Larger events
+     are still forwarded to the downstream as is, they are simply not
+     inspected. Zero uses the default value.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigMcpVisibility(betterproto.Message):
+    """Visibility sets the MCP-specific access logging configuration"""
+
+    disable_request_body: bool = betterproto.bool_field(1)
+    """
+    DisableRequestBody disables recording the JSON-RPC request body in
+     the AccessLogs. The request body is recorded by default since
+     inspecting the MCP request is the whole point of using MCP mode as
+     opposed to HTTP mode.
+    """
+
+    disable_response_body: bool = betterproto.bool_field(2)
+    """
+    DisableResponseBody disables recording the JSON-RPC response body,
+     which includes the individual `text/event-stream` response events,
+     in the AccessLogs. The response body is recorded by default.
+    """
+
+    include_request_headers: List[str] = betterproto.string_field(3)
+    """
+    IncludeRequestHeaders is the list of the request headers that are
+     recorded in the AccessLogs.
+    """
+
+    include_response_headers: List[str] = betterproto.string_field(4)
+    """
+    IncludeResponseHeaders is the list of the response headers that
+     are recorded in the AccessLogs.
+    """
+
+    include_all_request_headers: bool = betterproto.bool_field(5)
+    """
+    IncludeAllRequestHeaders records every request header in the
+     AccessLogs except for the ones set in excludeRequestHeaders.
+    """
+
+    include_all_response_headers: bool = betterproto.bool_field(6)
+    """
+    IncludeAllResponseHeaders records every response header in the
+     AccessLogs except for the ones set in excludeResponseHeaders.
+    """
+
+    exclude_request_headers: List[str] = betterproto.string_field(7)
+    """
+    ExcludeRequestHeaders is the list of the request headers that are
+     never recorded in the AccessLogs.
+    """
+
+    exclude_response_headers: List[str] = betterproto.string_field(8)
+    """
+    ExcludeResponseHeaders is the list of the response headers that
+     are never recorded in the AccessLogs.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigMcpPlugin(betterproto.Message):
+    """
+    Plugin provides a dynamic, per-request way to manipulate the
+     JSON-RPC requests and responses. A Service can have one or more
+     Plugins, including multiple Plugins of the same type. Unlike the
+     Configuration fields, which apply to every request that the
+     Configuration serves, every Plugin carries its own Condition which
+     decides whether that Plugin is invoked for a specific request.
+
+     The Plugins that are not specific to the MCP semantics (e.g. Lua,
+     ExtProc, RateLimit) reuse the HTTP mode's own Plugin types as is,
+     and they deliberately keep the same field names and the same field
+     numbers that they have in the HTTP mode's Plugin. The Cache Plugin
+     is the only HTTP Plugin that has no counterpart here since generic
+     HTTP caching understands neither the authorization scope nor the
+     MCP cache invalidation semantics.
+
+     The MCP-specific Plugins are invoked in a fixed order that does not
+     depend on the order of the Plugin list, and two Plugins of the same
+     type are invoked in the order in which they are listed. Note that
+     the Plugins which reuse the HTTP mode's own types sit outside that
+     order and outside the Guardrail boundary: they run before every
+     MCP-specific Plugin on the request and after every one of them on
+     the response. A Lua or an ExtProc Plugin can therefore rewrite a
+     response that a Guardrail has already inspected, and a Direct
+     Plugin answers a request that no Guardrail has seen. That boundary
+     is deliberate, since those Plugins carry the logic of the Service
+     itself rather than the content of the downstream or of the
+     upstream, but a Service that uses them to carry MCP content has to
+     inspect that content itself.
+    """
+
+    name: str = betterproto.string_field(1)
+    """Name is the unique name of the Plugin"""
+
+    is_disabled: bool = betterproto.bool_field(2)
+    """
+    IsDisabled disables the Plugin without having to change its
+     Condition or to delete it.
+    """
+
+    phase: "ServiceSpecConfigHttpPluginPhase" = betterproto.enum_field(3)
+    """
+    Phase sets whether the Plugin is invoked before or after the
+     authentication and authorization processes. It is the HTTP mode's
+     own Phase so that a Plugin behaves identically in either mode.
+     The two phases sit on either side of a single step which
+     authenticates and authorizes at once: a PRE_AUTH Plugin therefore
+     runs without a known User while a POST_AUTH one runs after the
+     Policies have already decided. Note that the MCP-specific Plugins
+     are always invoked in the POST_AUTH phase, since they act on a
+     request whose content and verdict both routinely depend on the
+     identity of the requesting User, and that setting PRE_AUTH for
+     one of them is rejected rather than silently ignored.
+    """
+
+    condition: "Condition" = betterproto.message_field(4)
+    """
+    Condition decides whether the Plugin is invoked on a per-request
+     basis. It is always required: a Plugin that carries no Condition
+     is rejected rather than silently never invoked. Use `matchAny` in
+     order to invoke a Plugin unconditionally. Note that a Condition
+     is always evaluated against the request context, including for
+     the Plugins that act on the response, so the response itself is
+     unavailable to it. Note also that a Condition of an MCP-specific
+     Plugin which cannot be evaluated at all (e.g. it errors at
+     runtime or it exceeds its cost limit) rejects the request rather
+     than skipping the Plugin, since skipping it would turn an
+     evaluation error into a silent bypass of the control that it
+     carries. The Plugins that reuse the HTTP mode's own types behave
+     in either mode as they do in the HTTP one, where such a Plugin is
+     skipped instead.
+    """
+
+    ext_proc: "ServiceSpecConfigHttpPluginExtProc" = betterproto.message_field(
+        5, group="type"
+    )
+    """
+    ExtProc processes the requests via an Envoy ext_proc compliant
+     gRPC server
+    """
+
+    lua: "ServiceSpecConfigHttpPluginLua" = betterproto.message_field(6, group="type")
+    """Lua processes the requests via a Lua script"""
+
+    direct: "ServiceSpecConfigHttpPluginDirect" = betterproto.message_field(
+        7, group="type"
+    )
+    """
+    Direct returns a response directly without proxying the request
+     to the upstream. Note that the body is served to an MCP client,
+     so it has to be a valid JSON-RPC response or error object.
+    """
+
+    rate_limit: "ServiceSpecConfigHttpPluginRateLimit" = betterproto.message_field(
+        8, group="type"
+    )
+    """RateLimit rate limits the requests"""
+
+    json_schema: "ServiceSpecConfigHttpPluginJsonSchema" = betterproto.message_field(
+        10, group="type"
+    )
+    """
+    JSONSchema validates the JSON request body against a JSON
+     schema
+    """
+
+    path: "ServiceSpecConfigHttpPluginPath" = betterproto.message_field(
+        11, group="type"
+    )
+    """Path removes and/or adds prefixes of the request path"""
+
+    guardrail: "ServiceSpecConfigMcpPluginGuardrail" = betterproto.message_field(
+        12, group="type"
+    )
+    """
+    Guardrail inspects the content that the request carries, and
+     optionally the content that the response carries, and decides
+     what to do about it
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigMcpPluginGuardrail(betterproto.Message):
+    """
+    Guardrail inspects the content that the JSON-RPC request carries,
+     and optionally the content that the response carries, and decides
+     what to do about it. Note that a Guardrail is a content control:
+     the identity, the method and the named target of a request are
+     governed by the Policies, and its shape is governed by the
+     `limits` and the `protocol` fields, and all of them are always
+     evaluated regardless of the Guardrails. Note also that a
+     Guardrail verdict is never an input to the Policies: a Guardrail
+     runs after the authorization decision has already been reached,
+     it acts on the request itself rather than informing a Policy
+     about it. A Guardrail is always invoked in the POST_AUTH phase.
+
+     A Guardrail that cannot reach a verdict at all (e.g. a `replace`
+     evaluation that errors) rejects the request rather than
+     proceeding: a Guardrail that silently allows the content that it
+     could not inspect provides a compliance claim that is not true.
+
+     The MCP exchange is the usual carrier of two risks that a
+     Guardrail addresses directly. On the request leg, the arguments
+     of a tool call are content that the downstream sends to a server
+     which is frequently operated by somebody else, which makes them
+     the usual carrier of credential and of PII leakage. On the
+     response leg, the content that a tool call, a resource read or a
+     prompt fetch returns is content that the server chose rather than
+     content that anybody asked for, which makes it the usual carrier
+     of indirect prompt injection and of tool poisoning.
+    """
+
+    leg: "ServiceSpecConfigMcpPluginGuardrailLeg" = betterproto.enum_field(1)
+    """Leg is the part of the exchange that is inspected"""
+
+    scopes: List["ServiceSpecConfigMcpPluginGuardrailScope"] = betterproto.enum_field(2)
+    """
+    Scopes is the list of the parts of the content that are
+     inspected. If not set, only the default Scope of the inspected
+     leg is inspected.
+    """
+
+    patterns: List["ServiceSpecConfigLlmPluginGuardrailPattern"] = (
+        betterproto.message_field(3)
+    )
+    """
+    Patterns is the list of the Patterns that are matched against
+     the inspected content. It is deliberately the LLM mode's own
+     Pattern: matching content is the same problem in either mode,
+     and a Pattern carries nothing that is specific to the inference
+     semantics, so the two modes share one detector set, one Action
+     set and one set of guarantees rather than growing two that
+     drift apart.
+    """
+
+    deny_message: str = betterproto.string_field(4)
+    """
+    DenyMessage is the message of the JSON-RPC error that is
+     returned for the DENY Action. Note that it is served to the
+     downstream, so it should not disclose the detection logic
+     itself.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlm(betterproto.Message):
+    """
+    LLM sets the LLM-gateway-specific configuration. LLM Services are
+     HTTP-based: they reuse the entire HTTP dataplane and additionally
+     understand the inference API semantics.
+    """
+
+    protocol: "ServiceSpecConfigLlmProtocol" = betterproto.enum_field(1)
+    """
+    Protocol is the inference API protocol spoken by both the
+     downstreams and the upstream. Note that the path of the upstream URL
+     sets the upstream's base path in the same sense that the official
+     OpenAI and Anthropic SDKs use a base URL. Octelium always serves the
+     canonical routes of the protocol to the downstreams (e.g.
+     `/v1/chat/completions`) and it rewrites the upstream request path to
+     the base path followed by the route without the leading version
+     segment of the protocol, which is `/v1` for the OPENAI and the
+     ANTHROPIC protocols and `/v1beta` for the GEMINI one. For instance,
+     an upstream URL of `https://openrouter.ai/api/v1` turns a downstream
+     request to `/v1/chat/completions` into an upstream request to
+     `/api/v1/chat/completions`. The base path therefore has to contain
+     the API version segment whenever the upstream uses one. The BEDROCK
+     protocol is the exception, since its own routes carry no version
+     segment at all: its request path is appended to the base path as is.
+     Whenever the upstream URL carries no path at all, which is the
+     default, the downstream request path is proxied to the upstream as
+     is. The upstreams that serve neither of these two shapes are
+     supported via the `path` field instead. If not set, which is the
+     default, the OPENAI protocol is used. Note that Octelium currently proxies the
+     requests to the upstream in the same protocol that it accepts them
+     from the downstreams, it does not translate between the protocols.
+     This field has to be set in the "default" or global Configuration
+     (as opposed to named dynamic Configs) in order to actually work.
+    """
+
+    model: "ServiceSpecConfigLlmModel" = betterproto.message_field(2)
+    """
+    Model overwrites the model name requested by the downstream before
+     the request is proxied to the upstream. It is the default of the
+     Service: a Model Plugin whose Condition matches overwrites it for
+     that request. If neither is set, which is the default, the
+     requested model name is preserved as is. Note that the model access
+     control itself is done by the Policies via the
+     `ctx.request.llm.model` field which always carries the model name as
+     requested by the downstream.
+    """
+
+    limits: "ServiceSpecConfigLlmLimits" = betterproto.message_field(3)
+    """
+    Limits sets the request parsing and semantic limits. These fields
+     have to be set in the "default" or global Configuration (as opposed
+     to named dynamic Configs) in order to actually work.
+    """
+
+    auth: "ServiceSpecConfigHttpAuth" = betterproto.message_field(4)
+    """
+    Auth sets authentication-to-upstream specific configuration. This is
+     where the upstream provider credentials (e.g. the OpenAI API key as
+     a bearer token or the Anthropic API key as the `x-api-key` custom
+     header) are set. Octelium never forwards the downstream credentials
+     to the upstream provider.
+    """
+
+    header: "ServiceSpecConfigHttpHeader" = betterproto.message_field(5)
+    """Header sets request and response header manipulation options"""
+
+    path: "ServiceSpecConfigHttpPath" = betterproto.message_field(6)
+    """Path sets the upstream request path options"""
+
+    plugins: List["ServiceSpecConfigLlmPlugin"] = betterproto.message_field(7)
+    """
+    Plugins is the list of the Plugins of the Service. Unlike the
+     fields of this Configuration, which apply to every request that the
+     Configuration serves, every Plugin carries its own Condition which
+     decides whether that Plugin is invoked for a specific request.
+     Note that this list used to be a list of the HTTP mode's own
+     Plugins. The LLM Plugin keeps the same field names and the same
+     field numbers for every Plugin type that the two modes share, so
+     the Plugins that were already valid for an LLM Service are
+     unaffected. The Cache Plugin, which was already rejected for the
+     LLM Services, is the only removed type.
+    """
+
+    is_upstream_http2: bool = betterproto.bool_field(8)
+    """
+    IsUpstreamHTTP2 sets HTTP connections to the upstream to HTTP/2. Not
+     enabled by default.
+    """
+
+    listen_http2: bool = betterproto.bool_field(9)
+    """
+    ListenHTTP2 sets the Service to listen to HTTP 2.0 connections. This
+     is only enabled by default for Services using TLS. This field has to
+     be enabled in the "default" or global Configuration (as opposed to
+     named dynamic Configs) in order to actually work.
+    """
+
+    visibility: "ServiceSpecConfigLlmVisibility" = betterproto.message_field(10)
+    """Visibility sets the visibility/access logging specific options"""
+
+    cors: "ServiceSpecConfigHttpCors" = betterproto.message_field(11)
+    """
+    CORS sets the Cross-Origin Resource Sharing options which are needed
+     to access the Service from a browser-based application served at a
+     different origin (e.g. the Cluster's own web dashboard). This field
+     has to be set in the "default" or global Configuration (as opposed
+     to named dynamic Configs) in order to actually work since the CORS
+     preflight requests carry no identity.
+    """
+
+    reasoning: "ServiceSpecConfigLlmReasoning" = betterproto.message_field(12)
+    """
+    Reasoning sets the reasoning, or thinking, configuration of the
+     requests before they are proxied to the upstream. It is the default
+     of the Service: a Reasoning Plugin whose Condition matches
+     overwrites it for that request. If neither is set, which is the
+     default, the reasoning configuration that the downstream requested
+     is preserved as is.
+    """
+
+    embedding: "ServiceSpecConfigLlmEmbedding" = betterproto.message_field(13)
+    """
+    Embedding sets how the semantic representations of the requests are
+     generated. It is the default of the Service: a SemanticCache or a
+     SemanticRouter Plugin that sets an `embedding` of its own uses that
+     one instead. A Plugin which needs an embedding while neither is set
+     is rejected rather than silently disabled.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmModel(betterproto.Message):
+    """Model overwrites the model name requested by the downstream"""
+
+    value: str = betterproto.string_field(1, group="type")
+    """
+    Value overwrites the model name requested by the downstream with
+     a static one.
+    """
+
+    eval: str = betterproto.string_field(2, group="type")
+    """
+    Eval overwrites the model name requested by the downstream with
+     the result of a CEL expression that is evaluated against the
+     request context. An empty result preserves the requested model
+     name.
+    """
+
+    opa: str = betterproto.string_field(3, group="type")
+    """
+    OPA overwrites the model name requested by the downstream with
+     the string result of a Rego script. An empty result preserves
+     the requested model name.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmReasoning(betterproto.Message):
+    """
+    Reasoning sets the reasoning, or thinking, configuration of the
+     request before it is proxied to the upstream. It is the mechanism
+     by which the Service, rather than the downstream, decides how much
+     a model is allowed to think, which is the largest controllable
+     component of both the latency and the cost of a reasoning model.
+
+     Every model expresses reasoning in its own way: some accept an
+     ordinal effort, others accept a numeric token budget, and the same
+     provider routinely changes which of the two a model family accepts
+     from one generation to the next. The protocol does not decide it
+     either, since a protocol that is a transport over the models of
+     several vendors carries whatever each of those models defines
+     rather than a reasoning configuration of its own. A Reasoning is
+     therefore written once, as an intent that belongs to no model in
+     particular, and Octelium encodes that intent in whatever the model
+     that actually serves the request accepts.
+
+     The intent is resolved by a single rule: Octelium serves the
+     closest configuration that the model accepts and that does not
+     exceed the configured one, and it rejects the request whenever the
+     model accepts nothing at or below it. A `level` that the model does
+     not offer is therefore served as the strongest level below it that
+     the model does offer rather than dropped, a `tokenBudget` larger
+     than the largest budget of the model is lowered to that budget, and
+     a `tokenBudget` smaller than the smallest one is served as disabled
+     reasoning wherever the model can stop reasoning at all. Nothing is
+     ever resolved upwards, since a Service that configured little
+     reasoning is not asking for whatever larger amount the model
+     happens to offer, and nothing is silently dropped, since a dropped
+     configuration lets the model think as much as it likes.
+
+     Note that a Reasoning overwrites whatever the downstream requested
+     rather than merging with it, and that it applies to the operations
+     that carry a reasoning configuration at all: it is a no-op for the
+     other operations rather than an error, since a Service usually
+     serves a mixture of them.
+    """
+
+    level: "ServiceSpecConfigLlmReasoningLevel" = betterproto.enum_field(
+        1, group="type"
+    )
+    """
+    Level sets a model-independent reasoning effort. It is the
+     portable way to configure reasoning: Octelium translates it
+     into an ordinal effort, into a token budget or into disabled
+     reasoning, according to what the model that serves the request
+     accepts.
+    """
+
+    token_budget: int = betterproto.uint64_field(2, group="type")
+    """
+    TokenBudget sets the number of the tokens that the model is
+     allowed to spend on reasoning. Unlike a Level it is exact
+     rather than portable: it is served only to the models that
+     accept a numeric reasoning budget and the requests of a model
+     that accepts an ordinal effort instead are rejected, since
+     translating a budget into an effort would mean inventing a
+     correspondence that no provider defines. Note that the models
+     which do accept a budget commonly read it as guidance rather
+     than as a ceiling, so it bounds what the Service asks for
+     rather than what the model eventually spends. Note also that
+     zero is rejected rather than read as disabling reasoning, since
+     the two are too easy to confuse in a generated configuration:
+     use the NONE Level in order to disable it.
+    """
+
+    eval: str = betterproto.string_field(3, group="type")
+    """
+    Eval is a CEL expression that is evaluated against the request
+     context and whose string result is the name of a Level (e.g.
+     `HIGH`), a number of tokens (e.g. `4096`) or a model-native
+     effort, which are read in the same way as the `level`, the
+     `tokenBudget` and the `effort` fields respectively. An empty
+     result preserves the reasoning configuration that the
+     downstream requested.
+    """
+
+    opa: str = betterproto.string_field(4, group="type")
+    """
+    OPA is a Rego script whose string result is used in the same
+     way as the one of the `eval` field
+    """
+
+    effort: str = betterproto.string_field(5, group="type")
+    """
+    Effort sets a model-native ordinal reasoning effort that is
+     served to the upstream exactly as it is written here. It is the
+     escape hatch of the `level` field: a provider that names an
+     effort which no Level names yet is usable through it without
+     waiting for Octelium to name it. Since Octelium knows neither
+     where such a value sits on its own scale nor whether the model
+     accepts it at all, an Effort is neither ordered nor translated:
+     it is served only to the models that accept an ordinal effort,
+     the requests of a model that accepts a numeric budget instead
+     are rejected, and a value that the model does not accept is
+     rejected by the upstream itself rather than by Octelium. Prefer
+     a Level wherever one names the wanted effort.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmEmbedding(betterproto.Message):
+    """
+    Embedding sets how the semantic representation, or embedding, of a
+     text is generated. It is used by the Plugins that decide from the
+     meaning of a request rather than from its literal content (i.e.
+     SemanticCache and SemanticRouter) and it is written once here so
+     that a Service does not have to repeat it for each of them.
+
+     Note that an embedding is generated from content that the downstream
+     itself supplied, so whichever API this field names does see the
+     prompts of the Service. That is why every Guardrail Plugin is always
+     applied before any embedding is generated, so that a redacted prompt
+     is embedded rather than the original one, and why a Service whose
+     prompts must not leave its own upstream has to name an embedding
+     backend that satisfies that requirement.
+    """
+
+    source: "ServiceSpecConfigLlmEmbeddingSource" = betterproto.message_field(1)
+    """Source sets where the embedding requests are sent"""
+
+    model: str = betterproto.string_field(2)
+    """
+    Model is the name of the embedding model (e.g.
+     "text-embedding-3-small")
+    """
+
+    dimensions: int = betterproto.uint32_field(3)
+    """
+    Dimensions requests this vector size from the embedding backends
+     that accept one. Zero, which is the default, uses the model's own
+     default size. Note that a smaller vector is materially cheaper to
+     store and to search, so it is worth setting wherever the model
+     supports it, and that changing it makes whatever was already
+     stored under the previous size unreachable rather than incorrect.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmEmbeddingSource(betterproto.Message):
+    """Source sets where the embedding requests are sent"""
+
+    current_upstream: bool = betterproto.bool_field(1, group="type")
+    """
+    CurrentUpstream sends the embedding requests to the Service's
+     own upstream, with the Service's own credentials and in the
+     Service's own protocol. It is only usable where that upstream
+     serves an embedding operation that the protocol itself
+     defines, which is the case for the OPENAI and the GEMINI
+     protocols. The ANTHROPIC protocol serves no embedding
+     operation at all and the BEDROCK one serves its embedding
+     models through the InvokeModel operations whose bodies are
+     model-native rather than defined by the protocol, so the
+     Services of either protocol name an `upstream` instead.
+    """
+
+    upstream: "ServiceSpecConfigLlmEmbeddingSourceUpstream" = betterproto.message_field(
+        2, group="type"
+    )
+    """
+    Upstream sends the embedding requests to a separate embedding
+     API. It is how a Service whose own upstream serves no
+     embedding operation, or whose embedding model is served
+     elsewhere, generates embeddings.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmEmbeddingSourceUpstream(betterproto.Message):
+    """
+    Upstream is an embedding API that is not the Service's own
+     upstream
+    """
+
+    url: str = betterproto.string_field(1)
+    """
+    URL is the base URL of the embedding API, in the same sense
+     that the Service's own upstream URL is a base URL
+    """
+
+    protocol: "ServiceSpecConfigLlmProtocol" = betterproto.enum_field(2)
+    """
+    Protocol is the inference API protocol spoken by the URL. If
+     not set, which is the default, the OPENAI protocol is used.
+    """
+
+    auth: "ServiceSpecConfigHttpAuth" = betterproto.message_field(3)
+    """
+    Auth sets the credentials that are used with the URL. Octelium
+     never forwards the downstream credentials to it.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmLimits(betterproto.Message):
+    """Limits sets the LLM request parsing and inference limits"""
+
+    max_request_bytes: int = betterproto.uint32_field(1)
+    """
+    MaxRequestBytes is the maximum size in bytes of the request body
+     that is buffered and parsed. Zero uses the default value. This
+     value is always bounded by an internal hard limit.
+    """
+
+    max_stream_event_bytes: int = betterproto.uint32_field(2)
+    """
+    MaxStreamEventBytes is the maximum size in bytes of a single
+     `text/event-stream` response event that is parsed. Larger events
+     are still forwarded to the downstream as is, they are simply not
+     inspected. Zero uses the default value.
+    """
+
+    max_estimated_input_tokens: int = betterproto.uint64_field(3)
+    """
+    MaxEstimatedInputTokens rejects the requests whose pre-flight
+     estimated input token count is above this value. Note that this
+     count is a byte-based heuristic calculated by Octelium itself, it
+     is neither a provider-accurate token count nor an upper bound of
+     one. Read the `ctx.request.llm.estimateQuality` field to know
+     whether the estimate accounted for the entire input. Use the
+     MaxRequestBytes field whenever an exact ceiling is needed.
+    """
+
+    max_output_tokens: int = betterproto.uint64_field(4)
+    """
+    MaxOutputTokens rejects the requests whose own requested maximum
+     output token count is above this value.
+    """
+
+    max_tools: int = betterproto.uint32_field(5)
+    """
+    MaxTools rejects the requests that declare more tools than this
+     value.
+    """
+
+    max_tool_schema_bytes: int = betterproto.uint32_field(6)
+    """
+    MaxToolSchemaBytes rejects the requests that declare a tool whose
+     serialized JSON Schema is above this value. Note that the
+     MaxTools field bounds the number of the declared tools while this
+     field bounds the size of a single one. Zero uses the default
+     value.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmVisibility(betterproto.Message):
+    """Visibility sets the LLM-specific access logging configuration"""
+
+    enable_request_body: bool = betterproto.bool_field(1)
+    """
+    EnableRequestBody records the request body, which contains the
+     prompt, in the AccessLogs. It is disabled by default since the
+     prompts are far more sensitive than typical HTTP request bodies:
+     they routinely contain secrets, PII, source code and proprietary
+     data.
+    """
+
+    enable_request_body_map: bool = betterproto.bool_field(2)
+    """
+    EnableRequestBodyMap records the serialized request body in the
+     AccessLogs. It is disabled by default for the same reason.
+    """
+
+    enable_response_body: bool = betterproto.bool_field(3)
+    """
+    EnableResponseBody records the response body, which contains the
+     generated completion, in the AccessLogs. It is disabled by
+     default. Note that it is only recorded for the responses that are
+     not streamed.
+    """
+
+    enable_response_body_map: bool = betterproto.bool_field(4)
+    """
+    EnableResponseBodyMap records the serialized response body in the
+     AccessLogs. It is disabled by default.
+    """
+
+    include_request_headers: List[str] = betterproto.string_field(5)
+    """
+    IncludeRequestHeaders is the list of the request headers that are
+     recorded in the AccessLogs.
+    """
+
+    include_response_headers: List[str] = betterproto.string_field(6)
+    """
+    IncludeResponseHeaders is the list of the response headers that
+     are recorded in the AccessLogs.
+    """
+
+    include_all_request_headers: bool = betterproto.bool_field(7)
+    """
+    IncludeAllRequestHeaders records every request header in the
+     AccessLogs except for the ones set in excludeRequestHeaders.
+    """
+
+    include_all_response_headers: bool = betterproto.bool_field(8)
+    """
+    IncludeAllResponseHeaders records every response header in the
+     AccessLogs except for the ones set in excludeResponseHeaders.
+    """
+
+    exclude_request_headers: List[str] = betterproto.string_field(9)
+    """
+    ExcludeRequestHeaders is the list of the request headers that are
+     never recorded in the AccessLogs.
+    """
+
+    exclude_response_headers: List[str] = betterproto.string_field(10)
+    """
+    ExcludeResponseHeaders is the list of the response headers that
+     are never recorded in the AccessLogs.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPlugin(betterproto.Message):
+    """
+    Plugin provides a dynamic, per-request way to manipulate the
+     inference requests and responses. A Service can have one or more
+     Plugins, including multiple Plugins of the same type. Unlike the
+     Configuration fields, which apply to every request that the
+     Configuration serves, every Plugin carries its own Condition which
+     decides whether that Plugin is invoked for a specific request.
+
+     The Plugins that are not specific to the inference semantics (e.g.
+     Lua, ExtProc, RateLimit) reuse the HTTP mode's own Plugin types as
+     is, and they deliberately keep the same field names and the same
+     field numbers that they have in the HTTP mode's Plugin. The Cache
+     Plugin is the only HTTP Plugin that has no counterpart here since
+     generic HTTP caching understands neither the authorization scope
+     nor the model, tool and sampling parameters that make up a correct
+     inference cache key. The SemanticCache Plugin is the
+     inference-aware replacement of it.
+
+     The inference-specific Plugins (i.e. Prompt, Tools, Guardrail,
+     Model, Reasoning, TokenRateLimit, SemanticCache and SemanticRouter)
+     are invoked in a fixed order that does not depend on the order of
+     the Plugin list: every Guardrail first, then every Tools, then the
+     SemanticRouter, then every Prompt, then every Model, then every
+     Reasoning, then the SemanticCache and finally every TokenRateLimit.
+     A Guardrail therefore always inspects the request before the Service
+     has added anything of its own to it, a SemanticRouter always decides
+     from what the downstream asked rather than from what the Service
+     then added, a SemanticCache always keys on the request that the
+     upstream would actually receive, a TokenRateLimit always counts the
+     request that the upstream actually receives and never counts a
+     request that the cache served instead, and a later Plugin always
+     observes the mutations of the earlier ones, including through its
+     own Condition and through the request context that its own
+     expressions read. The Model Plugin is the exception: it
+     rewrites the model of the request that is proxied to the upstream
+     rather than the model that the request context carries, so the
+     `ctx.request.llm.model` field that a Condition and an expression
+     read is always the model that the downstream itself requested. That
+     is deliberate, since the record of a request is the record of what
+     was asked for rather than of what the Service turned it into, and a
+     Reasoning Plugin therefore decides from the requested model. The
+     SemanticRouter Plugin behaves in the same way for the same reason.
+     Two Plugins of the same type are invoked in the order in which they
+     are listed, so the last Model or Reasoning Plugin that is invoked is
+     the one whose value is served. The TokenRateLimit Plugin is the
+     exception to that as well, since a quota that a later Plugin could
+     overwrite would be no quota at all: every TokenRateLimit Plugin
+     whose Condition matches is enforced and the request is served only
+     if all of them admit it. The SemanticCache and the SemanticRouter
+     Plugins are the opposite exception: the first one of either type
+     whose Condition matches is the one that is applied and the rest are
+     skipped, since a second cache lookup or a second routing decision
+     would either repeat work that was already done or silently discard
+     its result.
+
+     The Model and the Reasoning Plugins are the per-request form of the
+     Configuration's own `model` and `reasoning` fields: the
+     Configuration field is the default of every request that the
+     Configuration serves and a Plugin whose Condition matches
+     overwrites it. The two exist side by side because they answer
+     different questions: a Configuration field states what the Service
+     is, while a Plugin states what a particular request gets. The
+     SemanticRouter sits between the two where the model is concerned: it
+     overwrites the Configuration's own `model` field and a Model Plugin
+     overwrites it in turn, so the model of a request is decided by what
+     the Service is by default, then by what the request means, and
+     finally by whatever a Model Plugin states explicitly. The
+     TokenRateLimit, the SemanticCache and the SemanticRouter Plugins
+     deliberately have no Configuration counterpart of their own, since
+     each of them is only meaningful for the requests that a Condition
+     selects: use a Plugin whose Condition is `matchAny` in order to
+     apply one to every request. The Configuration's own `embedding`
+     field is not such a counterpart: it is the default embedding
+     configuration that the SemanticCache and the SemanticRouter Plugins
+     read whenever they set none of their own, so that a Service which
+     uses both of them describes its embedding backend once.
+
+     Note that the Plugins which reuse the HTTP mode's own types sit
+     outside that order and outside the Guardrail boundary: they run
+     before every inference-specific Plugin on the request and after
+     every one of them on the response. A Lua or an ExtProc Plugin can
+     therefore rewrite a response that a Guardrail has already inspected,
+     and a Direct Plugin answers a request that no Guardrail has seen.
+     That boundary is deliberate, since those Plugins carry the logic of
+     the Service itself rather than the content of the downstream or of
+     the upstream, but a Service that uses them to carry inference
+     content has to inspect that content itself.
+    """
+
+    name: str = betterproto.string_field(1)
+    """Name is the unique name of the Plugin"""
+
+    is_disabled: bool = betterproto.bool_field(2)
+    """
+    IsDisabled disables the Plugin without having to change its
+     Condition or to delete it.
+    """
+
+    phase: "ServiceSpecConfigHttpPluginPhase" = betterproto.enum_field(3)
+    """
+    Phase sets whether the Plugin is invoked before or after the
+     authentication and authorization processes. It is the HTTP mode's
+     own Phase so that a Plugin behaves identically in either mode.
+     The two phases sit on either side of a single step which
+     authenticates and authorizes at once: a PRE_AUTH Plugin therefore
+     runs without a known User while a POST_AUTH one runs after the
+     Policies have already decided. Note that the inference-specific
+     Plugins (i.e. Prompt, Tools, Guardrail, Model, Reasoning,
+     TokenRateLimit, SemanticCache and SemanticRouter) are always
+     invoked in the POST_AUTH phase, since they act on a
+     request whose content and verdict both routinely depend on the
+     identity of the requesting User, and that setting PRE_AUTH for
+     one of them is rejected rather than silently ignored.
+    """
+
+    condition: "Condition" = betterproto.message_field(4)
+    """
+    Condition decides whether the Plugin is invoked on a per-request
+     basis. It is always required: a Plugin that carries no Condition
+     is rejected rather than silently never invoked. Use `matchAny` in
+     order to invoke a Plugin unconditionally. Note that a Condition
+     is always evaluated against the request context, including for
+     the Plugins that act on the response, so the response status, the
+     token usage, the finish reason and the model that the upstream
+     itself reported are unavailable to it. Note also that a Condition
+     of an inference-specific Plugin (i.e. Prompt, Tools, Guardrail,
+     Model, Reasoning, TokenRateLimit, SemanticCache and
+     SemanticRouter) which cannot be evaluated at
+     all (e.g. it
+     errors at runtime or it exceeds its cost limit) rejects the
+     request rather than skipping the Plugin, since skipping it would
+     turn an evaluation error into a silent bypass of the control that
+     it carries. The Plugins that
+     reuse the HTTP mode's own types behave in either mode as they do
+     in the HTTP one, where such a Plugin is skipped instead.
+    """
+
+    ext_proc: "ServiceSpecConfigHttpPluginExtProc" = betterproto.message_field(
+        5, group="type"
+    )
+    """
+    ExtProc processes the requests via an Envoy ext_proc compliant
+     gRPC server
+    """
+
+    lua: "ServiceSpecConfigHttpPluginLua" = betterproto.message_field(6, group="type")
+    """Lua processes the requests via a Lua script"""
+
+    direct: "ServiceSpecConfigHttpPluginDirect" = betterproto.message_field(
+        7, group="type"
+    )
+    """
+    Direct returns a response directly without proxying the request
+     to the upstream. Note that the body is served to an inference
+     API client, so it has to be a valid response or error object of
+     the Service's own protocol.
+    """
+
+    rate_limit: "ServiceSpecConfigHttpPluginRateLimit" = betterproto.message_field(
+        8, group="type"
+    )
+    """RateLimit rate limits the requests"""
+
+    json_schema: "ServiceSpecConfigHttpPluginJsonSchema" = betterproto.message_field(
+        10, group="type"
+    )
+    """
+    JSONSchema validates the JSON request body against a JSON
+     schema
+    """
+
+    path: "ServiceSpecConfigHttpPluginPath" = betterproto.message_field(
+        11, group="type"
+    )
+    """Path removes and/or adds prefixes of the request path"""
+
+    prompt: "ServiceSpecConfigLlmPluginPrompt" = betterproto.message_field(
+        12, group="type"
+    )
+    """Prompt manipulates the instruction content of the request"""
+
+    tools: "ServiceSpecConfigLlmPluginTools" = betterproto.message_field(
+        13, group="type"
+    )
+    """Tools controls the tools that the request declares to the model"""
+
+    guardrail: "ServiceSpecConfigLlmPluginGuardrail" = betterproto.message_field(
+        14, group="type"
+    )
+    """
+    Guardrail inspects the content of the request, and optionally
+     of the response, and decides what to do about it
+    """
+
+    model: "ServiceSpecConfigLlmModel" = betterproto.message_field(15, group="type")
+    """
+    Model overwrites the model name requested by the downstream. It
+     overwrites the Configuration's own `model` field for the
+     requests whose Condition matches.
+    """
+
+    reasoning: "ServiceSpecConfigLlmReasoning" = betterproto.message_field(
+        16, group="type"
+    )
+    """
+    Reasoning sets the reasoning configuration of the request. It
+     overwrites the Configuration's own `reasoning` field for the
+     requests whose Condition matches.
+    """
+
+    token_rate_limit: "ServiceSpecConfigLlmPluginTokenRateLimit" = (
+        betterproto.message_field(17, group="type")
+    )
+    """
+    TokenRateLimit rate limits the inference token consumption of
+     the requests
+    """
+
+    semantic_cache: "ServiceSpecConfigLlmPluginSemanticCache" = (
+        betterproto.message_field(18, group="type")
+    )
+    """
+    SemanticCache serves the requests from the responses that the
+     Service already produced for the earlier requests of the same
+     meaning
+    """
+
+    semantic_router: "ServiceSpecConfigLlmPluginSemanticRouter" = (
+        betterproto.message_field(19, group="type")
+    )
+    """
+    SemanticRouter selects the model of a request from what the
+     request means. It overwrites the Configuration's own `model`
+     field for the requests whose Condition matches.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginPrompt(betterproto.Message):
+    """
+    Prompt manipulates the instruction content of the request before
+     it is proxied to the upstream. It is the mechanism by which the
+     Service, rather than the downstream, controls the instructions
+     that are actually sent to the upstream.
+
+     It applies to the operations that carry a conversation, which are
+     the `CHAT_COMPLETIONS` and the `RESPONSES` operations of the
+     OPENAI protocol and the `MESSAGES` and `COUNT_TOKENS` operations
+     of the ANTHROPIC one, and it is a no-op for the operations that
+     carry neither instructions nor messages at all (e.g.
+     `COMPLETIONS`, `EMBEDDINGS`, `MODERATIONS`, `MODELS_LIST`). Note
+     that `COUNT_TOKENS` is included deliberately, so that the count
+     that the downstream receives is the count of the request that
+     this Service would actually send. Use the Condition whenever a
+     Plugin has to be scoped to a specific operation.
+
+     Note that a Prompt Plugin is always invoked in the POST_AUTH
+     phase since the inserted content routinely depends on the
+     identity of the requesting User, and since mutating the request
+     before the authorization process would invalidate the pre-flight
+     limits that were already applied to it. The consequence of that
+     phase is that the `limits` field is evaluated against the request
+     exactly as the downstream sent it, before any content is inserted
+     here, so a Service that inserts large instructions has to size
+     `maxEstimatedInputTokens` with that added content in mind. The
+     size of the rendered content itself is bounded by an internal
+     hard limit.
+    """
+
+    system: "ServiceSpecConfigLlmPluginPromptSystem" = betterproto.message_field(
+        1, group="type"
+    )
+    """System manipulates the system instructions of the request"""
+
+    message: "ServiceSpecConfigLlmPluginPromptMessage" = betterproto.message_field(
+        2, group="type"
+    )
+    """
+    Message inserts or edits the conversation messages of the
+     request
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginPromptContent(betterproto.Message):
+    """
+    Content is the instruction content that is inserted by the
+     Plugin. Note that an evaluation which fails outright (e.g. the
+     expression returns a non-string result, exceeds its cost limit
+     or errors at runtime) rejects the request rather than inserting
+     nothing: a Prompt Plugin that silently disappears whenever its
+     own evaluation breaks provides a control that is not there.
+    """
+
+    value: str = betterproto.string_field(1, group="type")
+    """Value is a static string"""
+
+    eval: str = betterproto.string_field(2, group="type")
+    """
+    Eval is a CEL expression that is evaluated against the
+     request context and whose string result is used as the
+     content. An empty result is a no-op which leaves the
+     request exactly as it is. A result that is not a string at
+     all is an error rather than an empty result.
+    """
+
+    opa: str = betterproto.string_field(3, group="type")
+    """
+    OPA is a Rego script whose string result is used as the
+     content. An empty result is a no-op while a result that is
+     not a string at all is an error.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginPromptSystem(betterproto.Message):
+    """
+    System manipulates the system instructions of the request. Note
+     that the system instructions are not simply a message that has
+     a `system` role: they are the top-level `system` field for the
+     ANTHROPIC protocol, the top-level `instructions` field for the
+     `RESPONSES` operation, and the `system` or `developer` role
+     messages for the `CHAT_COMPLETIONS` operation. Octelium always
+     reads and writes every instruction carrier that the request's
+     own protocol and operation allow, which for the `RESPONSES`
+     operation includes the instruction-role input items as well as
+     the top-level field, so that a downstream cannot keep its own
+     instructions by moving them from one carrier to another.
+    """
+
+    mode: "ServiceSpecConfigLlmPluginPromptSystemMode" = betterproto.enum_field(1)
+    """Mode sets how the content is applied"""
+
+    content: "ServiceSpecConfigLlmPluginPromptContent" = betterproto.message_field(2)
+    """Content is the instruction content"""
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginPromptMessage(betterproto.Message):
+    """
+    Message inserts or edits the conversation messages of the
+     request. Note that the inserted content is recorded only
+     wherever the request body is recorded at all, which the
+     `visibility` field governs, and that a recorded body records
+     the request as the upstream receives it rather than as the
+     downstream sent it.
+    """
+
+    role: "ServiceSpecConfigLlmPluginPromptMessageRole" = betterproto.enum_field(1)
+    """Role is the role of the messages that are inserted or edited"""
+
+    position: "ServiceSpecConfigLlmPluginPromptMessagePosition" = (
+        betterproto.enum_field(2)
+    )
+    """Position sets where the content goes"""
+
+    selector: "ServiceSpecConfigLlmPluginPromptMessageSelector" = (
+        betterproto.enum_field(3)
+    )
+    """
+    Selector chooses which of the messages of the Role are
+     selected
+    """
+
+    content: "ServiceSpecConfigLlmPluginPromptContent" = betterproto.message_field(4)
+    """Content is the message content"""
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginTools(betterproto.Message):
+    """
+    Tools controls the tools that the request declares to the model.
+     Tools are where a model stops generating text and starts acting,
+     which makes them the main lever against excessive agency. Note
+     that this Plugin governs the tools that an inference request
+     offers to the model, and that where those tools are eventually
+     executed decides what else governs them. A tool call that the
+     downstream executes against an MCP Service is additionally
+     governed by the Policies of that Service. A provider-hosted tool
+     (e.g. web search, file search, code execution or computer use)
+     and a remote MCP server that the inference provider itself
+     invokes are both executed inside the provider, so they never
+     reach an Octelium Service at all and this Plugin is the only
+     place where they are governed. A Tools Plugin is always invoked
+     in the POST_AUTH phase.
+    """
+
+    filters: List["ServiceSpecConfigLlmPluginToolsFilter"] = betterproto.message_field(
+        1
+    )
+    """
+    Filters decides what happens to the tools that the request
+     declares. If not set, every declared tool is preserved as is.
+    """
+
+    tools: List["ServiceSpecConfigLlmPluginToolsTool"] = betterproto.message_field(2)
+    """
+    Tools is the list of the tool definitions that the Service
+     itself adds to the request
+    """
+
+    choice: "ServiceSpecConfigLlmPluginToolsChoice" = betterproto.enum_field(3)
+    """
+    Choice sets how the requested tool choice is handled. Note that
+     a tool choice which names a tool that is no longer declared,
+     because a Filter removed or replaced it, is always reconciled
+     against the remaining tools regardless of this field.
+    """
+
+    deny_message: str = betterproto.string_field(4)
+    """
+    DenyMessage is the message of the protocol-correct error that
+     is returned for the DENY Decision. Note that it is served to
+     the downstream, so it should not disclose the policy itself.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginToolsFilter(betterproto.Message):
+    """
+    Filter decides what happens to a declared tool. The Filters are
+     evaluated in the order in which they are listed and the first
+     one that matches a tool decides what happens to it.
+
+     A tool that matches no Filter at all is allowed, with one
+     deliberate exception: whenever at least one Filter is set, a
+     provider-hosted tool (i.e. a tool whose `type` is set to
+     anything other than "function") that matches no Filter is
+     removed rather than allowed, since such a tool executes inside
+     the inference provider and therefore crosses the execution
+     boundary before any Octelium Service sees it. Use a `type`
+     Filter in order to allow one explicitly.
+    """
+
+    name: str = betterproto.string_field(1, group="match")
+    """
+    Name is a glob pattern (e.g. "read_*") that is matched
+     against the name of the tool. The name is read from
+     `tools[].name` for the ANTHROPIC protocol as well as for
+     the `RESPONSES` operation of the OPENAI one, and from
+     `tools[].function.name` for its `CHAT_COMPLETIONS`
+     operation. Note that the provider-hosted tools usually
+     carry no name at all, which means that a name pattern
+     cannot express them and that the `type` field is what
+     matches them.
+    """
+
+    type: str = betterproto.string_field(2, group="match")
+    """
+    Type is a glob pattern (e.g. "web_search*") that is matched
+     against the `tools[].type` field, which is how the
+     provider-hosted tools and the provider-invoked remote MCP
+     servers are declared and which is the only identity that
+     most of them carry. A tool that declares no type at all is
+     matched as "function". Note that a type is a coarse
+     identity: every remote MCP server declaration shares the
+     same "mcp" type regardless of the endpoint that it points
+     to, so allowing that type allows every such server. Use the
+     REPLACE Decision in order to pin a specific declaration.
+    """
+
+    decision: "ServiceSpecConfigLlmPluginToolsFilterDecision" = betterproto.enum_field(
+        3
+    )
+    """Decision is what happens to a tool that the Filter matches"""
+
+    replace: "ServiceSpecConfigLlmPluginToolsFilterReplace" = betterproto.message_field(
+        4
+    )
+    """
+    Replace is the tool definition that replaces the matched one.
+     It is only used for the REPLACE Decision.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginToolsFilterReplace(betterproto.Message):
+    """
+    Replace is the tool definition that replaces the matched one.
+     It is a serialized JSON object of the request's own protocol
+     (i.e. a single entry of the request's `tools` array) and it
+     is inserted as is, which means that the Service rather than
+     the downstream defines the tool. An evaluation that fails
+     outright, or that returns anything that is not a JSON object,
+     rejects the request.
+    """
+
+    value: str = betterproto.string_field(1, group="type")
+    """Value is a static serialized JSON object"""
+
+    eval: str = betterproto.string_field(2, group="type")
+    """
+    Eval is a CEL expression that is evaluated against the
+     request context and whose string result is the
+     serialized JSON object
+    """
+
+    opa: str = betterproto.string_field(3, group="type")
+    """OPA is a Rego script whose result is the tool definition"""
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginToolsTool(betterproto.Message):
+    """
+    Tool is a tool definition that the Service itself adds to the
+     request. It is a serialized JSON object of the request's own
+     protocol (i.e. a single entry of the request's `tools` array).
+     Note that the added tools are not subject to the Filters, since
+     the Service rather than the downstream declared them, and that
+     an evaluation that fails outright, or that returns anything
+     that is not a JSON object, rejects the request.
+    """
+
+    value: str = betterproto.string_field(1, group="type")
+    """Value is a static serialized JSON object"""
+
+    eval: str = betterproto.string_field(2, group="type")
+    """
+    Eval is a CEL expression that is evaluated against the
+     request context and whose string result is the serialized
+     JSON object
+    """
+
+    opa: str = betterproto.string_field(3, group="type")
+    """OPA is a Rego script whose result is the tool definition"""
+
+    position: "ServiceSpecConfigLlmPluginToolsToolPosition" = betterproto.enum_field(4)
+    """Position sets where the tool is added"""
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginGuardrail(betterproto.Message):
+    """
+    Guardrail inspects the content of the request, and optionally of
+     the response, and decides what to do about it. Note that a
+     Guardrail is a content control: the identity, the model and the
+     operation of a request are governed by the Policies, and its
+     shape is governed by the `limits` field, and both of them are
+     always evaluated regardless of the Guardrails. Note also that a
+     Guardrail verdict is never an input to the Policies: a Guardrail
+     runs after the authorization decision has already been reached,
+     it acts on the request itself rather than informing a Policy
+     about it. A Guardrail is always invoked in the POST_AUTH phase.
+
+     A Guardrail that cannot reach a verdict at all (e.g. a `replace`
+     evaluation that errors) rejects the request rather than
+     proceeding: a Guardrail that silently allows the content that it
+     could not inspect provides a compliance claim that is not true.
+    """
+
+    leg: "ServiceSpecConfigLlmPluginGuardrailLeg" = betterproto.enum_field(1)
+    """Leg is the part of the exchange that is inspected"""
+
+    scopes: List["ServiceSpecConfigLlmPluginGuardrailScope"] = betterproto.enum_field(2)
+    """
+    Scopes is the list of the parts of the content that are
+     inspected. If not set, only CONTENT is inspected. Note that it
+     is unused on the RESPONSE leg, where the generated content is
+     the only content that there is to inspect.
+    """
+
+    patterns: List["ServiceSpecConfigLlmPluginGuardrailPattern"] = (
+        betterproto.message_field(3)
+    )
+    """
+    Patterns is the list of the Patterns that are matched against
+     the inspected content
+    """
+
+    deny_message: str = betterproto.string_field(4)
+    """
+    DenyMessage is the message of the protocol-correct error that
+     is returned for the DENY Action. Note that it is served to the
+     downstream, so it should not disclose the detection logic
+     itself.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginGuardrailPattern(betterproto.Message):
+    """
+    Pattern matches the inspected content and decides what happens
+     to a match. Every Pattern is evaluated against the content and
+     its own Action applies to its own matches, so that a Guardrail
+     can redact one kind of content while it strips another. A
+     single match whose Action is DENY rejects the request, or
+     withholds the response, regardless of what the remaining
+     Patterns decided, and the rewriting Actions are applied to the
+     matched spans in the order in which they appear in the content
+     so that the result never depends on the order of this list.
+
+     Two rewriting Patterns whose matches overlap are applied once,
+     to the union of the two spans, with the most destructive Action
+     among them: STRIP removes more than REPLACE, which in turn does
+     not preserve what REDACT names. Two overlapping matches of the
+     same Action are decided by the order of this list, and two
+     matches that are merely adjacent are applied separately. Note
+     that a Pattern which matches more than an internal hard limit of
+     times in a single run of text rejects the request rather than
+     rewriting it, since neither the work nor the size of such a
+     rewrite is bounded by anything that the Service configured.
+    """
+
+    regex: str = betterproto.string_field(1, group="match")
+    """
+    Regex is an RE2 regular expression. Note that RE2 has
+     neither backreferences nor lookarounds, which is what makes
+     its matching time linear in the size of the input.
+    """
+
+    type: "ServiceSpecConfigLlmPluginGuardrailPatternType" = betterproto.enum_field(
+        2, group="match"
+    )
+    """
+    Type is a built-in deterministic detector of personal
+     information
+    """
+
+    secrets: "ServiceSpecConfigLlmPluginGuardrailPatternSecrets" = (
+        betterproto.message_field(3, group="match")
+    )
+    """Secrets is the built-in secret detector"""
+
+    action: "ServiceSpecConfigLlmPluginGuardrailPatternAction" = betterproto.enum_field(
+        4
+    )
+    """Action is what happens to the matched content"""
+
+    replace: "ServiceSpecConfigLlmPluginGuardrailPatternReplace" = (
+        betterproto.message_field(5)
+    )
+    """
+    Replace is the content that replaces the matched content. It
+     is only used for the REPLACE Action.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginGuardrailPatternReplace(betterproto.Message):
+    """Replace is the content that replaces the matched content"""
+
+    value: str = betterproto.string_field(1, group="type")
+    """Value is a static string"""
+
+    eval: str = betterproto.string_field(2, group="type")
+    """
+    Eval is a CEL expression that is evaluated against the
+     request context and whose string result is used as the
+     content
+    """
+
+    opa: str = betterproto.string_field(3, group="type")
+    """
+    OPA is a Rego script whose string result is used as the
+     content
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginGuardrailPatternSecrets(betterproto.Message):
+    """
+    Secrets is the built-in secret detector. It matches the
+     credentials that its rules recognize, which are the API keys,
+     the tokens, the private keys and the connection strings of
+     hundreds of providers, so that a Service does not have to
+     name each of them in a Pattern of its own. Note that it
+     detects credentials rather than personal information, which
+     the `type` detectors match instead.
+
+     A matched span covers the credential together with whatever
+     its rule needs in order to recognize it, which is sometimes
+     the assignment that carries it rather than the secret alone,
+     so a rewriting Action can remove slightly more than the
+     credential. Note also that a credential which appears more
+     than once in the same run of text is reported once, which is
+     why every occurrence of a matched span, rather than only the
+     reported one, is rewritten.
+    """
+
+    exclude_rules: List[str] = betterproto.string_field(1)
+    """
+    ExcludeRules is the list of the rules that are skipped,
+     which is how a rule that matches content that the Service
+     legitimately carries is turned off without giving up the
+     detector as a whole. A rule is named by its identifier,
+     which is the name that the REDACT placeholder carries and
+     which is matched without regard to its case, and an
+     identifier that no rule has is ignored.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginTokenRateLimit(betterproto.Message):
+    """
+    TokenRateLimit rate limits the inference token consumption of
+     the requests rather than their number. It answers a question that
+     a request rate limit cannot: a downstream that is bounded to one
+     request per second is not thereby bounded at all, since a single
+     request can carry an entire repository as its input and can
+     generate for minutes. Note that it is therefore not a replacement
+     for the `rateLimit` Plugin, which bounds the request rate itself
+     and which is the cheaper control against a downstream that simply
+     loops.
+
+     Note that this is a consumption quota rather than a per-request
+     ceiling, which is what distinguishes it from the Configuration's
+     own `limits` field: `limits` decides whether a single request may
+     be as large as it is, while this Plugin decides whether an
+     identity may still consume anything at all.
+
+     ## Reservation and reconciliation
+
+     The token consumption of a request is not known at the moment at
+     which the request has to be admitted or refused: the input token
+     count that the upstream will report is not exactly the pre-flight
+     estimate that Octelium calculates, and the output token count is
+     not known at all until the response has been generated. A limiter
+     that simply charged the consumption after the fact would admit
+     every one of the requests that are already in flight against the
+     same window, which is precisely the case that a quota exists to
+     bound.
+
+     Octelium therefore reserves before the request is proxied and
+     reconciles after the response has been observed. The reservation
+     occupies the window from the moment the request is admitted, so
+     that the concurrent requests of the same identity see one another
+     rather than each of them seeing the same stale capacity. The
+     reconciliation then replaces that reservation by what the request
+     actually consumed, which returns the unused part of an
+     over-reservation to the window and charges the excess of an
+     under-reservation to it, and it charges that final count at the
+     moment the request completed rather than at the moment it was
+     admitted, so that a request is accounted the same way whether it
+     took an instant or outlived its own window.
+
+     Note that a request which is still in flight once the window has
+     moved past its own admission stops occupying that window until it
+     completes. That follows from counting the requests that fall
+     within a window rather than the ones that are open, and it means
+     that a Service whose requests routinely run for longer than the
+     window is bounded by the requests that completed rather than by
+     the ones that are still running.
+
+     The reservation is calculated from the request as the upstream
+     receives it, which is after every other Plugin has already mutated
+     it, since the instructions and the tool definitions that a Service
+     inserts are consumed by the model exactly as the ones that the
+     downstream sent are. Its input part is the pre-flight estimate,
+     which is a byte-based heuristic rather than a provider-accurate
+     count, and its output part is the maximum output token count that
+     the request itself declares, or the `defaultOutputTokens` field
+     for a request that declares none.
+
+     The reconciliation uses the token usage that the upstream itself
+     reported, which is the only authoritative count and which Octelium
+     already observes for the AccessLogs, including across a streamed
+     response. Whenever that usage is only partially observed (e.g. a
+     stream ended before its usage event) the larger of the reservation
+     and the observed count is charged. Whenever a response carried no
+     usage at all the reservation is kept as it is rather than
+     returned, since a consumption that could not be measured is not a
+     consumption that did not happen. The exception is an upstream that
+     answered with an error and reported no usage, which releases the
+     reservation in full, since a provider does not bill a request that
+     it refused and a Service whose upstream is failing has no reason
+     to spend its quota on those failures. A request that never reached
+     the upstream at all releases its reservation in the same way.
+
+     Note that a request which declares no output maximum of its own
+     and whose Plugin sets no `defaultOutputTokens` reserves nothing
+     for its output, so it is admitted against its input alone and is
+     charged for what it generated only once it has already generated
+     it. That is a stated limitation rather than a guarantee that is
+     quietly approximated: Octelium cannot bound in advance an output
+     whose ceiling neither the downstream nor the Service has declared.
+    """
+
+    scope: "ServiceSpecConfigLlmPluginTokenRateLimitScope" = betterproto.enum_field(1)
+    """
+    Scope sets which of the token counts of a request are counted
+     against the limit
+    """
+
+    key: "ServiceSpecConfigHttpPluginRateLimitKey" = betterproto.message_field(2)
+    """
+    Key sets the identity against which the tokens are counted. It
+     is the HTTP mode's own Key so that a rate limit is written
+     identically in either mode. Note that a token quota is usually
+     written per User rather than per Session, since recreating a
+     Session is not supposed to reset a quota. Note also that every
+     Plugin counts against a window of its own even where two of them
+     resolve to the same key.
+    """
+
+    limit: int = betterproto.int64_field(3)
+    """
+    Limit is the maximum number of the tokens of the Scope that can
+     be consumed within the window
+    """
+
+    window: "__meta_v1__.Duration" = betterproto.message_field(4)
+    """Window is the duration of the sliding window"""
+
+    default_output_tokens: int = betterproto.uint64_field(5)
+    """
+    DefaultOutputTokens is the number of the output tokens that are
+     reserved for a request which declares no maximum output token
+     count of its own. Zero, which is the default, reserves nothing
+     for such a request. It is unused for the INPUT Scope.
+    """
+
+    deny_message: str = betterproto.string_field(6)
+    """
+    DenyMessage is the message of the protocol-correct 429 error
+     that is returned once the limit is exceeded
+    """
+
+    headers: List["ServiceSpecConfigHttpPluginRateLimitKeyValue"] = (
+        betterproto.message_field(7)
+    )
+    """
+    Headers is the list of the headers that are set in the response
+     that is returned once the limit is exceeded (e.g. `Retry-After`)
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginSemanticCache(betterproto.Message):
+    """
+    SemanticCache serves a request from a response that the Service
+     already produced for an earlier request of the same meaning,
+     without invoking the model at all. It is the inference-aware
+     replacement of the HTTP mode's own Cache Plugin, which has no
+     counterpart here because a generic HTTP cache keys on a URI and
+     therefore understands neither who is allowed to read a response
+     nor which of the request's own fields change what the model would
+     have generated.
+
+     A lookup has two stages. An exactly repeated request is served
+     from the cache without generating an embedding at all, since the
+     embedding is routinely the most expensive part of the lookup and
+     an identical request needs no similarity to be recognized. Only a
+     request that no exact entry matches is embedded and searched by
+     similarity.
+
+     It applies to the operations that generate a completion from a
+     conversation, which are the `CHAT_COMPLETIONS` and `RESPONSES`
+     operations of the OPENAI protocol, the `MESSAGES` operation of the
+     ANTHROPIC one, the `GENERATE_CONTENT` operation of the GEMINI one
+     and the `CONVERSE` operation of the BEDROCK one, and it is a no-op
+     for the rest of them rather than an error. Only a successful
+     response is ever stored, and a response that asks the downstream
+     to call a tool is deliberately never stored at all: replaying such
+     a response would make an application carry out an action again
+     even though no model decided that it should be carried out now.
+
+     The identity of a cache entry is deliberately split in two. The
+     semantic subject, which is the content that the downstream is
+     actually asking about, is the only part that is matched by
+     meaning. Everything else that decides what the model would
+     generate (i.e. the effective model, the operation, the system
+     instructions, the preceding messages, the tools, the tool choice,
+     the response schema, the reasoning configuration, the sampling
+     parameters and every other field of the request that Octelium does
+     not recognize) is matched exactly, so two requests only ever
+     compete with one another when their entire execution context is
+     identical. Embedding a whole request instead would let two
+     requests that merely read similarly be served the same answer even
+     though they asked different models, carried different instructions
+     or declared different tools.
+
+     The cache always acts on the request as the upstream would have
+     received it, which is why it is invoked after every Plugin that
+     rewrites that request: a secret that a Guardrail redacted is never
+     embedded, instructions that a Prompt inserted are a part of the
+     exact context, and the model that a Model Plugin or a
+     SemanticRouter selected is the model whose responses the entry
+     belongs to rather than the one that the downstream named.
+
+     Note that a hit consumes no inference tokens at all, which is why
+     the cache is invoked before every TokenRateLimit Plugin: a request
+     that the model never saw does not spend the quota of the identity
+     that sent it. Note also that a hit is not a bypass of the
+     Service's own controls: the response Guardrails are applied to a
+     cached response exactly as they are applied to an upstream one,
+     since an administrator can have changed a Guardrail after the
+     entry was stored, and a response that a Guardrail rejected is
+     never stored in the first place.
+
+     Note that the exact execution context is derived from the request
+     body, from the request path and from the Configuration that served
+     the request, and that it deliberately does not include the request
+     headers, since the headers that the Service itself adds are not
+     applied until after this Plugin has already decided. A Service
+     whose answers vary with a header that the downstream sends, or
+     with one that the Service derives from an expression, therefore
+     has to name that value in an `eval` scope rather than to assume
+     that the cache separates it.
+
+     Note that this Plugin fails open. A request whose embedding
+     backend or whose vector store is unavailable, times out or errors
+     is proxied to the upstream as a miss rather than rejected, since a
+     cache that can refuse to serve a Service is a new availability
+     dependency rather than an optimization.
+
+     Note finally that enabling this Plugin stores prompt-derived
+     vectors and generated responses for the lifetime of an entry, and
+     that it does so independently of the `visibility` field: a Service
+     that records neither request nor response bodies in its AccessLogs
+     still stores both of them here while its entries live. Octelium
+     never stores the prompts themselves, it stores their vectors and
+     opaque digests of their execution context, but the generated
+     responses are stored as they are since serving them again is the
+     entire point.
+    """
+
+    embedding: "ServiceSpecConfigLlmEmbedding" = betterproto.message_field(1)
+    """
+    Embedding sets how the semantic subject of the request is
+     embedded. It overwrites the Configuration's own `embedding`
+     field for the requests whose Condition matches.
+    """
+
+    scope: "ServiceSpecConfigLlmPluginSemanticCacheScope" = betterproto.message_field(2)
+    """
+    Scope sets the caller partition of the cache. If not set, which
+     is the default, the cache is partitioned per User.
+    """
+
+    min_similarity: float = betterproto.float_field(3)
+    """
+    MinSimilarity is the smallest cosine similarity, between 0 and
+     1, at which two semantic subjects are treated as the same
+     question. Zero uses the default value which is deliberately
+     conservative. Note that the value that is correct for one
+     embedding model is not the value that is correct for another, so
+     it has to be tuned against the model that the `embedding` field
+     names rather than carried over from another Service.
+    """
+
+    ttl: "__meta_v1__.Duration" = betterproto.message_field(4)
+    """
+    TTL is the duration after which a cache entry expires. Zero uses
+     the default value. Note that it is also the window during which
+     a response that a model would generate differently today is
+     still served, so it is the Service's own statement of how stale
+     an answer is allowed to be.
+    """
+
+    max_size: int = betterproto.uint64_field(5)
+    """
+    MaxSize is the maximum size in bytes of a response that can be
+     stored. Zero uses the default value. A larger response is served
+     to the downstream as it is, it is simply not stored. This value
+     is always bounded by an internal hard limit.
+    
+     Note that a response is only stored once it is known to be
+     complete: a stream that ended before its own final event, a
+     response that carries a tool call and a response that a
+     Guardrail rejected are all served to the downstream that asked
+     for them and none of them is stored.
+    """
+
+    use_x_cache_header: bool = betterproto.bool_field(6)
+    """
+    UseXCacheHeader sets the `X-Cache` response header to indicate
+     whether the response was served from the cache
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginSemanticCacheScope(betterproto.Message):
+    """
+    Scope partitions the cached responses between the callers. It is
+     the boundary that decides who is allowed to be served a response
+     that was generated for somebody else, so it is a security
+     control rather than a tuning parameter.
+    """
+
+    per_user: bool = betterproto.bool_field(1, group="type")
+    """
+    PerUser partitions the cache by User, which is the default.
+     A response is therefore only ever served again to the User
+     that it was generated for.
+    """
+
+    per_session: bool = betterproto.bool_field(2, group="type")
+    """
+    PerSession partitions the cache by Session, which is the
+     narrowest partition. It is the default for the Services that
+     serve anonymous requests, where there is no User to
+     partition by.
+    """
+
+    shared: bool = betterproto.bool_field(3, group="type")
+    """
+    Shared lets every authorized caller of the Service be served
+     any cached response of the Service. It is a deliberate
+     cross-identity boundary: a response that was generated from
+     one caller's prompt is served to another caller whose own
+     prompt merely means the same thing, so it is only ever
+     correct where every caller of the Service is already
+     entitled to every answer that the Service can produce.
+    """
+
+    eval: str = betterproto.string_field(4, group="type")
+    """
+    Eval partitions the cache by the string result of a CEL
+     expression that is evaluated against the request context
+     (e.g. a tenant identifier). An empty result is rejected
+     rather than read as a shared partition, since a partition
+     that silently collapses into a shared one is a silent
+     cross-identity exposure.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginSemanticRouter(betterproto.Message):
+    """
+    SemanticRouter selects the model of a request from what the
+     request means rather than from what the downstream named. It is
+     how a Service serves one logical endpoint (e.g. a `model` of
+     "auto") while sending the difficult requests to an expensive model
+     and the trivial ones to a cheap one, without every downstream
+     application having to know which model exists or which one it
+     ought to ask for.
+
+     Each Route describes a class of requests, both in prose and by
+     example, and both of those are embedded independently at
+     configuration time. A request is routed by embedding its own
+     semantic subject and taking the Route of the single
+     highest-scoring description or example, which is why several
+     short, concrete examples define a Route far more sharply than one
+     long description: an example is a point of the space that the
+     Route is claiming while a description is a summary of it. A Route
+     whose best score is below its minimum similarity does not match at
+     all, and a request that no Route matched is served the
+     `fallbackModel`.
+
+     The routed model is a default rather than an override: it
+     overwrites the Configuration's own `model` field, since a Service
+     that routes semantically is stating that the meaning of a request
+     decides its model, but a Model Plugin whose Condition matches
+     overwrites it in turn, since naming a model explicitly for a
+     request is a more specific statement than routing it. Use the
+     Plugin's own Condition in order to decide when routing applies at
+     all, which is how a Service routes only the requests that asked
+     for it (e.g. `ctx.request.llm.model == "auto"`) while serving every
+     explicitly named model as it was asked for.
+
+     Note that the semantic subject of a routing decision is what the
+     downstream is asking for rather than the entire request: the
+     Service's own inserted instructions are deliberately not embedded,
+     since instructions that every request carries are a large
+     component that every request shares and that therefore makes the
+     Routes harder rather than easier to tell apart. That is the
+     opposite of the SemanticCache, where those same instructions must
+     participate in the exact context, and it is why this Plugin is
+     invoked before the Prompt Plugins while the cache is invoked after
+     them.
+
+     Note that `ctx.request.llm.model` continues to carry the model
+     that the downstream itself requested, exactly as it does for the
+     Model Plugin, so the Policies keep deciding on what was asked for
+     rather than on what the Service turned it into. The AccessLogs
+     record the Route that matched, its similarity and the model that
+     was selected.
+
+     Note finally that this Plugin fails open as well: a request whose
+     embedding could not be generated at all is served the
+     `fallbackModel` rather than rejected.
+    """
+
+    embedding: "ServiceSpecConfigLlmEmbedding" = betterproto.message_field(1)
+    """
+    Embedding sets how the semantic subjects of the requests and of
+     the Routes are embedded. It overwrites the Configuration's own
+     `embedding` field for the requests whose Condition matches. Note
+     that the Routes are embedded with it as well, so changing it
+     re-embeds every Route.
+    """
+
+    routes: List["ServiceSpecConfigLlmPluginSemanticRouterRoute"] = (
+        betterproto.message_field(2)
+    )
+    """Routes is the list of the Routes"""
+
+    min_similarity: float = betterproto.float_field(3)
+    """
+    MinSimilarity is the smallest cosine similarity at which a Route
+     matches, for the Routes that set none of their own. Zero uses
+     the default value. Note that a routing threshold is far lower
+     than a caching one, since two requests of the same kind are not
+     nearly as similar to one another as two ways of asking the same
+     question, and that it has to be tuned against the embedding
+     model that is actually used.
+    """
+
+    fallback_model: str = betterproto.string_field(4)
+    """
+    FallbackModel is the model that serves the requests that no
+     Route matched. If not set, which is the default, such a request
+     keeps the model that the downstream itself requested.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmPluginSemanticRouterRoute(betterproto.Message):
+    """Route is a class of requests and the model that serves it"""
+
+    name: str = betterproto.string_field(1)
+    """
+    Name is the identity of the Route. It is unique within the
+     Plugin and it is what the AccessLogs record.
+    """
+
+    description: str = betterproto.string_field(2)
+    """
+    Description describes the class of requests that this Route
+     serves, in prose. It participates in the semantic matching.
+    """
+
+    examples: List[str] = betterproto.string_field(3)
+    """
+    Examples are representative requests of this Route (e.g.
+     "Why is this Go program deadlocking?"). Each one is embedded
+     and matched independently of the others and of the
+     Description.
+    """
+
+    model: str = betterproto.string_field(4)
+    """
+    Model is the model that serves the requests that this Route
+     matched
+    """
+
+    min_similarity: float = betterproto.float_field(5)
+    """
+    MinSimilarity is the smallest cosine similarity at which this
+     Route matches. Zero uses the Plugin's own `minSimilarity`. It
+     is how a Route that must not be entered by mistake (e.g. the
+     one that selects the most expensive model) is held to a
+     stricter standard than the rest.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigSsh(betterproto.Message):
+    """SSH sets the SSH-specific configuration"""
+
     user: str = betterproto.string_field(1)
     """
     User is the SSH user. If set, this value overrides the SSH user
@@ -1586,7 +5993,10 @@ class ServiceSpecConfigSsh(betterproto.Message):
     """
 
     enable_subsystem: bool = betterproto.bool_field(5)
-    """EnableSubsystem enable subsystem requests"""
+    """
+    EnableSubsystem enables subsystem requests (e.g. SFTP). Subsystem
+     requests are disabled by default.
+    """
 
     e_ssh_mode: bool = betterproto.bool_field(6)
     """
@@ -1596,10 +6006,16 @@ class ServiceSpecConfigSsh(betterproto.Message):
     """
 
     visibility: "ServiceSpecConfigSshVisibility" = betterproto.message_field(7)
+    """Visibility sets the SSH-specific access logging configuration"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigSshAuth(betterproto.Message):
+    """
+    Auth sets the credentials used to authenticate to the upstream SSH
+     server
+    """
+
     password: "ServiceSpecConfigSshAuthPassword" = betterproto.message_field(
         1, group="type"
     )
@@ -1619,16 +6035,36 @@ class ServiceSpecConfigSshAuth(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigSshAuthPassword(betterproto.Message):
+    """Password is the password of the upstream SSH server"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the Password
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigSshAuthPrivateKey(betterproto.Message):
+    """
+    PrivateKey is the private key used to authenticate to the upstream
+     SSH server
+    """
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the PEM-encoded PrivateKey
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigSshUpstreamHostKey(betterproto.Message):
+    """
+    UpstreamHostKey sets how the upstream SSH server's host public key
+     is verified upon connecting to it
+    """
+
     insecure_ignore_host_key: bool = betterproto.bool_field(1, group="type")
     """
     InsecureIgnoreHostKey ignores verifying the upstream server
@@ -1642,12 +6078,25 @@ class ServiceSpecConfigSshUpstreamHostKey(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigSshVisibility(betterproto.Message):
+    """Visibility sets the SSH-specific access logging configuration"""
+
     disable_session_recording: bool = betterproto.bool_field(1)
+    """
+    DisableSessionRecording disables recording the SSH sessions in the
+     access logs.
+    """
+
     enable_session_stdin_recording: bool = betterproto.bool_field(2)
+    """
+    EnableSessionStdinRecording additionally records the SSH sessions'
+     stdin in the access logs.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigPostgres(betterproto.Message):
+    """Postgres sets the PostgreSQL-specific configuration"""
+
     user: str = betterproto.string_field(1)
     """
     User is the postgres user. If set, it overrides the user values
@@ -1677,90 +6126,217 @@ class ServiceSpecConfigPostgres(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigPostgresAuth(betterproto.Message):
+    """
+    Auth sets the credentials used to authenticate to the upstream
+     PostgreSQL server
+    """
+
     password: "ServiceSpecConfigPostgresAuthPassword" = betterproto.message_field(
         1, group="type"
     )
+    """Password sets the password used for authentication"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigPostgresAuthPassword(betterproto.Message):
+    """Password is the password of the upstream PostgreSQL server"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the Password
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigPostgresAuthorization(betterproto.Message):
+    """
+    Authorization sets the PostgreSQL-specific authorization
+     configuration
+    """
+
     mode: "ServiceSpecConfigPostgresAuthorizationMode" = betterproto.enum_field(1)
     """Mode is the authorization mode"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigMySql(betterproto.Message):
+    """MySQL sets the MySQL-specific configuration"""
+
     user: str = betterproto.string_field(1)
+    """
+    User is the MySQL user. If set, it overrides the user values
+     requested by the downstreams. If not set, the user values requested
+     by the downstreams is forwarded to the upstream as is.
+    """
+
     auth: "ServiceSpecConfigMySqlAuth" = betterproto.message_field(2)
+    """Auth sets the upstream authentication information"""
+
     database: str = betterproto.string_field(3)
+    """
+    Database is the name of the database. If set, it overrides the
+     database values requested by the downstreams. If not set, the
+     database values requested by the downstreams is forwarded to the
+     upstream as is.
+    """
+
     is_tls: bool = betterproto.bool_field(4)
+    """
+    IsTLS connects to the upstream over TLS. It must be enabled if the
+     upstream database is listening over TLS.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigMySqlAuth(betterproto.Message):
+    """
+    Auth sets the credentials used to authenticate to the upstream MySQL
+     server
+    """
+
     password: "ServiceSpecConfigMySqlAuthPassword" = betterproto.message_field(
         1, group="type"
     )
+    """Password sets the password used for authentication"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigMySqlAuthPassword(betterproto.Message):
+    """Password is the password of the upstream MySQL server"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the Password
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigClientCertificate(betterproto.Message):
+    """
+    ClientCertificate sets the x509 client certificate used to
+     authenticate to an upstream that requires mTLS
+    """
+
     trusted_c_as: List[str] = betterproto.string_field(1)
+    """
+    TrustedCAs is the list of the PEM-encoded root certificate
+     authorities that are trusted to verify the upstream's certificate.
+    """
+
     from_secret: str = betterproto.string_field(2, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains the
+     PEM representations of both the client certificate chain and its
+     corresponding private key
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigTls(betterproto.Message):
+    """
+    TLS sets the TLS client-side configuration used by the Service to
+     connect to an upstream that is listening over TLS
+    """
+
     trusted_c_as: List[str] = betterproto.string_field(1)
+    """
+    TrustedCAs is the list of the PEM-encoded root certificate
+     authorities that are trusted to verify the upstream's certificate.
+     By default, this list overrides the system's default trusted CAs.
+    """
+
     append_to_system_pool: bool = betterproto.bool_field(2)
+    """
+    AppendToSystemPool appends the trustedCAs to the system's default
+     trusted CAs instead of overriding them.
+    """
+
     insecure_skip_verify: bool = betterproto.bool_field(3)
+    """
+    InsecureSkipVerify entirely skips verifying the certificate provided
+     by the upstream. This is typically recommended only for
+     troubleshooting/testing use cases.
+    """
+
     client_certificate: "ServiceSpecConfigTlsClientCertificate" = (
         betterproto.message_field(4)
     )
+    """
+    ClientCertificate sets the mTLS client certificate used to
+     authenticate to the upstream
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigTlsClientCertificate(betterproto.Message):
+    """
+    ClientCertificate sets the x509 client certificate used to
+     authenticate to an upstream that requires mTLS
+    """
+
     from_secret: str = betterproto.string_field(2, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains the
+     PEM representations of both the client certificate chain and its
+     corresponding private key
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigKubernetes(betterproto.Message):
+    """Kubernetes sets the Kubernetes-specific configuration"""
+
     kubeconfig: "ServiceSpecConfigKubernetesKubeconfig" = betterproto.message_field(
         1, group="type"
     )
-    """
-    Kubeconfig sets the cluster configuration from a kubeconfig. Only
-     one of ClusterInfo or Kubeconfig must be set.
-    """
+    """Kubeconfig sets the cluster configuration from a kubeconfig"""
 
     bearer_token: "ServiceSpecConfigKubernetesBearerToken" = betterproto.message_field(
         2, group="type"
     )
+    """BearerToken sets the bearer token used for authentication"""
+
     client_certificate: "ServiceSpecConfigClientCertificate" = (
         betterproto.message_field(3, group="type")
     )
+    """
+    ClientCertificate sets the x509 client certificate used for
+     authentication
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigKubernetesBearerToken(betterproto.Message):
+    """
+    BearerToken is the bearer token used to authenticate to the upstream
+     Kubernetes cluster
+    """
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains the
+     bearer token
+    """
+
     trusted_c_as: List[str] = betterproto.string_field(2)
+    """
+    TrustedCAs is the list of the PEM-encoded root certificate
+     authorities that are trusted to verify the upstream's certificate.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigKubernetesKubeconfig(betterproto.Message):
+    """Kubeconfig is the kubeconfig of the upstream Kubernetes cluster"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains the
+     kubeconfig
+    """
+
     context: str = betterproto.string_field(2)
     """
     Context is the kubeconfig context (e.g.
@@ -1769,7 +6345,149 @@ class ServiceSpecConfigKubernetesKubeconfig(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class ServiceSpecConfigSocks5(betterproto.Message):
+    """SOCKS5 sets the SOCKS5-specific configuration"""
+
+    auth: "ServiceSpecConfigSocks5Auth" = betterproto.message_field(1)
+    """Auth sets the upstream authentication information"""
+
+    is_embedded_mode: bool = betterproto.bool_field(2)
+    """
+    IsEmbeddedMode enables the "embedded" mode where the SOCKS5 proxy is
+     served from within a connected Octelium client instead of being
+     proxied to a separate upstream SOCKS5 server. In this mode the
+     connected client itself acts as the SOCKS5 egress point.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigSocks5Auth(betterproto.Message):
+    """
+    Auth sets the credentials used to authenticate to the upstream
+     SOCKS5 server
+    """
+
+    no_auth: bool = betterproto.bool_field(1, group="type")
+    """
+    NoAuth explicitly uses no authentication when connecting to the
+     upstream SOCKS5 server
+    """
+
+    username_password: "ServiceSpecConfigSocks5AuthUsernamePassword" = (
+        betterproto.message_field(2, group="type")
+    )
+    """
+    UsernamePassword sets the username and password used for
+     authentication
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigSocks5AuthUsernamePassword(betterproto.Message):
+    """
+    UsernamePassword authenticates to the upstream via a username and
+     a password
+    """
+
+    username: str = betterproto.string_field(1)
+    """Username is the username used to authenticate to the upstream"""
+
+    password: "ServiceSpecConfigSocks5AuthUsernamePasswordPassword" = (
+        betterproto.message_field(2)
+    )
+    """Password is the password used to authenticate to the upstream"""
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigSocks5AuthUsernamePasswordPassword(betterproto.Message):
+    """Password is the password of the upstream SOCKS5 server"""
+
+    from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the Password
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigRdp(betterproto.Message):
+    """RDP sets the RDP-specific configuration"""
+
+    auth: "ServiceSpecConfigRdpAuth" = betterproto.message_field(1)
+    """Auth sets the upstream authentication information"""
+
+    upstream_tls: "ServiceSpecConfigRdpUpstreamTls" = betterproto.message_field(2)
+    """UpstreamTLS sets the verification of the upstream's certificate"""
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigRdpAuth(betterproto.Message):
+    """
+    Auth sets the credentials used to authenticate to the upstream RDP
+     server over Network Level Authentication (NLA)
+    """
+
+    user: str = betterproto.string_field(1)
+    """
+    User is the RDP user. If set, it overrides the user requested by
+     the downstreams.
+    """
+
+    domain: str = betterproto.string_field(2)
+    """
+    Domain is the Windows domain of the RDP user. It can be left
+     unset if the upstream uses local accounts rather than a domain.
+    """
+
+    password: "ServiceSpecConfigRdpAuthPassword" = betterproto.message_field(3)
+    """Password is the password used to authenticate to the upstream"""
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigRdpAuthPassword(betterproto.Message):
+    """Password is the password of the upstream RDP user"""
+
+    from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains
+     the Password
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigRdpUpstreamTls(betterproto.Message):
+    """
+    UpstreamTLS sets how the certificate presented by the upstream RDP
+     server is verified. Windows RDP servers typically present
+     self-signed certificates.
+    """
+
+    pinned_cert_sha256: List[str] = betterproto.string_field(1)
+    """
+    PinnedCertSHA256 is the list of the SHA-256 fingerprints of the
+     upstream's certificate. The connection is rejected if the
+     upstream's certificate matches none of them. More than one
+     fingerprint can be set which is useful while rotating the
+     upstream's certificate.
+    """
+
+    allow_any_cert: bool = betterproto.bool_field(2)
+    """
+    AllowAnyCert entirely disables verifying the upstream's
+     certificate. This is typically recommended only for
+     troubleshooting/testing use cases.
+    """
+
+
+@dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstream(betterproto.Message):
+    """
+    Upstream is the actual protected resource behind the Service. It is
+     either directly reachable from within the Cluster, remotely reachable
+     via an actively connected User, or a container that is deployed and
+     managed by the Cluster itself.
+    """
+
     user: str = betterproto.string_field(1)
     """
     User is the User name if the upstream should be served by an active
@@ -1781,8 +6499,11 @@ class ServiceSpecConfigUpstream(betterproto.Message):
     url: str = betterproto.string_field(2, group="type")
     """
     URL is the canonical URL of the upstream.
-     Examples are`http://example.com`, `postgres://pg.default.svc`,
+     Examples are `http://example.com`, `postgres://pg.default.svc`,
      `tcp://my-custom-app:9090`,  and `https://api.sandbox.paypal.com`.
+     Note that the URL path is ignored in every mode except for the LLM
+     and the MCP modes where it sets the upstream's base path. Read the
+     `llm` and the `mcp` Configuration fields for more details.
     """
 
     loadbalance: "ServiceSpecConfigUpstreamLoadbalance" = betterproto.message_field(
@@ -1798,12 +6519,18 @@ class ServiceSpecConfigUpstream(betterproto.Message):
     )
     """
     Container sets the Upstream to a managed container deployed
-     on the same Kubernetes cluster that hosts the OCtelium Cluster
+     on the same Kubernetes cluster that hosts the Octelium Cluster
     """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamLoadbalance(betterproto.Message):
+    """
+    Loadbalance is the list of upstreams to load balance among. Random
+     load balancing is currently automatically enforced among the
+     different endpoints.
+    """
+
     endpoints: List["ServiceSpecConfigUpstreamLoadbalanceEndpoint"] = (
         betterproto.message_field(1)
     )
@@ -1812,10 +6539,12 @@ class ServiceSpecConfigUpstreamLoadbalance(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamLoadbalanceEndpoint(betterproto.Message):
+    """Endpoint is a single upstream endpoint"""
+
     url: str = betterproto.string_field(1)
     """
     URL is the canonical URL of the upstream.
-     Examples are`http://example.com`, `postgres://pg.default.svc`,
+     Examples are `http://example.com`, `postgres://pg.default.svc`,
      `tcp://my-custom-app:9090`,  and
      `https://api.sandbox.paypal.com`.
     """
@@ -1831,6 +6560,12 @@ class ServiceSpecConfigUpstreamLoadbalanceEndpoint(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainer(betterproto.Message):
+    """
+    Container is a containerized application that is deployed, managed
+     and scaled by the Cluster on top of the underlying Kubernetes
+     infrastructure and served as the Service's upstream
+    """
+
     port: int = betterproto.uint32_field(1)
     """Port is the port exposed by the managed container"""
 
@@ -1873,21 +6608,36 @@ class ServiceSpecConfigUpstreamContainer(betterproto.Message):
     volumes: List["ServiceSpecConfigUpstreamContainerVolume"] = (
         betterproto.message_field(10)
     )
+    """
+    Volumes is the list of the Kubernetes volumes defined for the
+     container
+    """
+
     volume_mounts: List["ServiceSpecConfigUpstreamContainerVolumeMount"] = (
         betterproto.message_field(11)
     )
+    """
+    VolumeMounts is the list of the defined Volumes that are mounted
+     inside the container
+    """
+
     liveness_probe: "ServiceSpecConfigUpstreamContainerProbe" = (
         betterproto.message_field(12)
     )
+    """LivenessProbe sets the container's liveness probe"""
+
     readiness_probe: "ServiceSpecConfigUpstreamContainerProbe" = (
         betterproto.message_field(13)
     )
+    """ReadinessProbe sets the container's readiness probe"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerEnv(betterproto.Message):
+    """Env is an environment variable of the managed container"""
+
     name: str = betterproto.string_field(1)
-    """Name is  the environment variable key"""
+    """Name is the environment variable key"""
 
     value: str = betterproto.string_field(2, group="type")
     """Value is the environment variable value"""
@@ -1909,6 +6659,11 @@ class ServiceSpecConfigUpstreamContainerEnv(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerEnvKubernetesSecretRef(betterproto.Message):
+    """
+    KubernetesSecretRef references an existent Kubernetes secret in
+     the `octelium` Kubernetes namespace
+    """
+
     name: str = betterproto.string_field(1)
     """Name is the Kubernetes secret name"""
 
@@ -1918,6 +6673,11 @@ class ServiceSpecConfigUpstreamContainerEnvKubernetesSecretRef(betterproto.Messa
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerCredentials(betterproto.Message):
+    """
+    Credentials sets the credentials used to pull the container image
+     from a private container registry
+    """
+
     username_password: (
         "ServiceSpecConfigUpstreamContainerCredentialsUsernamePassword"
     ) = betterproto.message_field(1, group="type")
@@ -1931,6 +6691,11 @@ class ServiceSpecConfigUpstreamContainerCredentials(betterproto.Message):
 class ServiceSpecConfigUpstreamContainerCredentialsUsernamePassword(
     betterproto.Message
 ):
+    """
+    UsernamePassword authenticates to the container registry via a
+     username and a password
+    """
+
     username: str = betterproto.string_field(1)
     """
     Username is the username used to authenticate to the container
@@ -1956,6 +6721,11 @@ class ServiceSpecConfigUpstreamContainerCredentialsUsernamePassword(
 class ServiceSpecConfigUpstreamContainerCredentialsUsernamePasswordPassword(
     betterproto.Message
 ):
+    """
+    Password is the password used to authenticate to the
+     container registry
+    """
+
     from_secret: str = betterproto.string_field(1, group="type")
     """
     FromSecret sets the name of the Secret whose value contains
@@ -1965,6 +6735,11 @@ class ServiceSpecConfigUpstreamContainerCredentialsUsernamePasswordPassword(
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerResourceLimit(betterproto.Message):
+    """
+    ResourceLimit sets how much compute resources the managed
+     container is allowed to consume
+    """
+
     cpu: "ServiceSpecConfigUpstreamContainerResourceLimitCpu" = (
         betterproto.message_field(1)
     )
@@ -1986,18 +6761,27 @@ class ServiceSpecConfigUpstreamContainerResourceLimit(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerResourceLimitCpu(betterproto.Message):
+    """CPU is the CPU-related limit"""
+
     millicores: int = betterproto.uint32_field(1)
     """Millicores is the integer that sets the limit milli-cores"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerResourceLimitMemory(betterproto.Message):
+    """Memory is the memory-related limit"""
+
     megabytes: int = betterproto.uint32_field(1)
-    """Megabytes is the integer that set the limit in megabytes"""
+    """Megabytes is the integer that sets the limit in megabytes"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerSecurityContext(betterproto.Message):
+    """
+    SecurityContext sets the security-related configuration of the
+     managed container
+    """
+
     read_only_root_filesystem: bool = betterproto.bool_field(1)
     """ReadOnlyRootFilesystem sets the root filesystem to read-only"""
 
@@ -2014,83 +6798,194 @@ class ServiceSpecConfigUpstreamContainerSecurityContext(betterproto.Message):
 class ServiceSpecConfigUpstreamContainerSecurityContextCapabilities(
     betterproto.Message
 ):
+    """
+    Capabilities sets the Linux capabilities of the managed
+     container
+    """
+
     add: List[str] = betterproto.string_field(1)
+    """
+    Add is the list of the added Linux capabilities (e.g.
+     "NET_ADMIN", "SYS_TIME")
+    """
+
     drop: List[str] = betterproto.string_field(2)
+    """
+    Drop is the list of the dropped Linux capabilities (e.g.
+     "ALL")
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerVolume(betterproto.Message):
+    """
+    Volume is a Kubernetes volume that is defined for the managed
+     container
+    """
+
     name: str = betterproto.string_field(1)
+    """
+    Name is the name of the Volume. It is used by the VolumeMounts
+     to reference the Volume.
+    """
+
     persistent_volume_claim: (
         "ServiceSpecConfigUpstreamContainerVolumePersistentVolumeClaim"
     ) = betterproto.message_field(2, group="type")
+    """
+    PersistentVolumeClaim uses a Kubernetes persistent volume
+     claim as the Volume
+    """
+
     empty_dir: "ServiceSpecConfigUpstreamContainerVolumeEmptyDir" = (
         betterproto.message_field(3, group="type")
     )
+    """EmptyDir uses a Kubernetes emptyDir as the Volume"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerVolumePersistentVolumeClaim(
     betterproto.Message
 ):
+    """PersistentVolumeClaim is a Kubernetes persistent volume claim"""
+
     name: str = betterproto.string_field(1)
+    """Name is the name of the Kubernetes persistent volume claim"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerVolumeEmptyDir(betterproto.Message):
+    """EmptyDir is a Kubernetes emptyDir volume"""
+
     size_limit_megabytes: int = betterproto.uint32_field(1)
+    """
+    SizeLimitMegabytes is the size limit of the volume in
+     megabytes
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerVolumeMount(betterproto.Message):
+    """VolumeMount mounts a defined Volume inside the managed container"""
+
     name: str = betterproto.string_field(1)
+    """Name is the name of the mounted Volume"""
+
     mount_path: str = betterproto.string_field(2)
+    """
+    MountPath is the path inside the container at which the Volume
+     is mounted
+    """
+
     sub_path: str = betterproto.string_field(3)
+    """
+    SubPath is the path within the Volume that is mounted instead of
+     its root
+    """
+
     read_only: bool = betterproto.bool_field(4)
+    """ReadOnly mounts the Volume as read-only"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerProbe(betterproto.Message):
+    """
+    Probe is a Kubernetes liveness or readiness probe of the managed
+     container
+    """
+
     http_get: "ServiceSpecConfigUpstreamContainerProbeHttpGet" = (
         betterproto.message_field(1, group="type")
     )
+    """HTTPGet sets an HTTP GET probe"""
+
     tcp_socket: "ServiceSpecConfigUpstreamContainerProbeTcpSocket" = (
         betterproto.message_field(2, group="type")
     )
+    """TCPSocket sets a TCP socket probe"""
+
     grpc: "ServiceSpecConfigUpstreamContainerProbeGrpc" = betterproto.message_field(
         3, group="type"
     )
+    """GRPC sets a gRPC probe"""
+
     initial_delay_seconds: int = betterproto.int32_field(5)
+    """
+    InitialDelaySeconds is the number of seconds after the container
+     starts before the Probe is initiated
+    """
+
     timeout_seconds: int = betterproto.int32_field(6)
+    """
+    TimeoutSeconds is the number of seconds after which the Probe
+     times out
+    """
+
     period_seconds: int = betterproto.int32_field(7)
+    """
+    PeriodSeconds is the number of seconds between performing the
+     Probe
+    """
+
     success_threshold: int = betterproto.int32_field(8)
+    """
+    SuccessThreshold is the number of consecutive successes after
+     which the Probe is considered successful
+    """
+
     failure_threshold: int = betterproto.int32_field(9)
+    """
+    FailureThreshold is the number of consecutive failures after
+     which the Probe is considered failed
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerProbeHttpGet(betterproto.Message):
+    """HTTPGet probes the container via an HTTP GET request"""
+
     path: str = betterproto.string_field(1)
+    """Path is the HTTP path of the probe request"""
+
     port: int = betterproto.uint32_field(2)
+    """Port is the port at which the probe request is sent"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerProbeTcpSocket(betterproto.Message):
+    """TCPSocket probes the container by opening a TCP connection"""
+
     port: int = betterproto.uint32_field(1)
+    """Port is the port at which the TCP connection is opened"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigUpstreamContainerProbeGrpc(betterproto.Message):
+    """GRPC probes the container via the gRPC health checking protocol"""
+
     port: int = betterproto.uint32_field(1)
+    """Port is the port at which the gRPC probe is sent"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecDeployment(betterproto.Message):
+    """
+    Deployment sets the configuration of the Kubernetes deployment
+     implementing the Service
+    """
+
     replicas: int = betterproto.uint32_field(1)
     """Replicas sets the number of replicas of a deployed Service."""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecDynamicConfig(betterproto.Message):
+    """
+    DynamicConfig overrides the global/static Service Config on a
+     per-request basis. If no Rule matches, the global Config is used as a
+     fallback.
+    """
+
     configs: List["ServiceSpecConfig"] = betterproto.message_field(1)
     """
     Configs is the list of named configurations that will override the
@@ -2107,6 +7002,11 @@ class ServiceSpecDynamicConfig(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecDynamicConfigRule(betterproto.Message):
+    """
+    Rule is evaluated on a per-request basis to choose or generate the
+     Config used for that specific request
+    """
+
     condition: "Condition" = betterproto.message_field(1)
     """Condition is the condition"""
 
@@ -2125,6 +7025,8 @@ class ServiceSpecDynamicConfigRule(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceStatus(betterproto.Message):
+    """Status is the current status of the Service"""
+
     addresses: List["ServiceStatusAddress"] = betterproto.message_field(1)
     """
     Addresses is the list of private addresses used by the Service for
@@ -2135,42 +7037,116 @@ class ServiceStatus(betterproto.Message):
     """NamespaceRef is the reference of the owner Namespace"""
 
     managed_service: "ServiceStatusManagedService" = betterproto.message_field(3)
+    """
+    ManagedService is the configuration of the Service if it is deployed
+     and maintained by the Cluster itself.
+    """
+
     region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(4)
+    """
+    RegionRef is the reference of the Region in which the Service is
+     deployed.
+    """
+
     primary_hostname: str = betterproto.string_field(5)
+    """PrimaryHostname is the Service's primary hostname"""
+
     additional_hostnames: List[str] = betterproto.string_field(6)
+    """
+    AdditionalHostnames is the list of the Service's additional hostnames
+    """
+
     port: int = betterproto.uint32_field(7)
+    """Port is the port number used by the Service's listener"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceStatusAddress(betterproto.Message):
+    """
+    Address is a private address at which the Service is reachable by the
+     Cluster's clients
+    """
+
     dual_stack_ip: "__meta_v1__.DualStackIp" = betterproto.message_field(1)
+    """DualStackIP is the IPv4 and IPv6 addresses of the Service"""
+
     pod_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """PodRef is the reference of the Pod serving the Service"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceStatusManagedService(betterproto.Message):
+    """
+    ManagedService is the configuration of a Service that is deployed and
+     maintained by the Cluster itself (e.g. the built-in Services of the
+     Cluster such as the AuthService and the Portal)
+    """
+
     image: str = betterproto.string_field(1)
+    """Image is the image URL of the managed Service's container"""
+
     port: int = betterproto.uint32_field(2)
+    """Port is the port exposed by the managed Service's container"""
+
     has_subdomain: bool = betterproto.bool_field(3)
+    """
+    HasSubdomain determines whether the managed Service additionally
+     serves the subdomains of its FQDNs.
+    """
+
     forward_host: bool = betterproto.bool_field(4)
+    """
+    ForwardHost determines whether the downstream Host header is forwarded
+     to the managed Service as is.
+    """
+
     type: str = betterproto.string_field(5)
+    """Type is the type of the managed Service"""
+
     k8_s_labels: Dict[str, str] = betterproto.map_field(
         6, betterproto.TYPE_STRING, betterproto.TYPE_STRING
     )
+    """
+    K8sLabels is the map of the additional Kubernetes labels set for the
+     managed Service's Kubernetes resources.
+    """
+
     command: List[str] = betterproto.string_field(7)
+    """Command overrides the container image's command"""
+
     args: List[str] = betterproto.string_field(8)
+    """
+    Args is the list of command arguments that override the image
+     arguments
+    """
+
     image_pull_secret: str = betterproto.string_field(9)
+    """
+    ImagePullSecret is the name of the Kubernetes secret used to pull the
+     container image from a private registry.
+    """
+
     health_check: "ServiceStatusManagedServiceHealthCheck" = betterproto.message_field(
         10
     )
+    """HealthCheck sets the health check of the managed Service"""
+
     resource_limit: "ServiceStatusManagedServiceResourceLimit" = (
         betterproto.message_field(11)
     )
+    """ResourceLimit sets the managed Service's container resource limits"""
+
     read_only_file_system: bool = betterproto.bool_field(12)
+    """ReadOnlyFileSystem sets the container's root filesystem to read-only"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceStatusManagedServiceHealthCheck(betterproto.Message):
+    """
+    HealthCheck is the health check used by the Cluster to probe the
+     managed Service
+    """
+
     grpc: "ServiceStatusManagedServiceHealthCheckGrpc" = betterproto.message_field(
         1, group="type"
     )
@@ -2178,29 +7154,49 @@ class ServiceStatusManagedServiceHealthCheck(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ServiceStatusManagedServiceHealthCheckGrpc(betterproto.Message):
+    """GRPC is a gRPC health check"""
+
     port: int = betterproto.int32_field(1)
+    """Port is the port at which the health check is served"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceStatusManagedServiceResourceLimit(betterproto.Message):
+    """
+    ResourceLimit sets the compute resource limits of the managed Service
+    """
+
     cpu: "ServiceStatusManagedServiceResourceLimitCpu" = betterproto.message_field(1)
+    """CPU sets the CPU-related limit"""
+
     memory: "ServiceStatusManagedServiceResourceLimitMemory" = (
         betterproto.message_field(2)
     )
+    """Memory sets the memory-related limit"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceStatusManagedServiceResourceLimitCpu(betterproto.Message):
+    """CPU is the CPU-related limit"""
+
     millicores: int = betterproto.uint32_field(1)
+    """Millicores is the integer that sets the limit milli-cores"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceStatusManagedServiceResourceLimitMemory(betterproto.Message):
+    """Memory is the memory-related limit"""
+
     megabytes: int = betterproto.uint32_field(1)
+    """Megabytes is the integer that sets the limit in megabytes"""
 
 
 @dataclass(eq=False, repr=False)
 class ServiceList(betterproto.Message):
+    """
+    ServiceList is the list of Services returned by the ListService method.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2216,11 +7212,26 @@ class ServiceList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class GenerateCredentialTokenRequest(betterproto.Message):
+    """
+    GenerateCredentialTokenRequest is the request of the
+     GenerateCredentialToken method.
+    """
+
     credential_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    CredentialRef is the reference of the Credential whose token is generated
+     or rotated
+    """
 
 
 @dataclass(eq=False, repr=False)
 class CredentialToken(betterproto.Message):
+    """
+    CredentialToken is the token generated by the GenerateCredentialToken
+     method. Generating a new token for a Credential rotates it and immediately
+     invalidates its older token.
+    """
+
     authentication_token: "CredentialTokenAuthenticationToken" = (
         betterproto.message_field(1, group="type")
     )
@@ -2239,11 +7250,16 @@ class CredentialToken(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class CredentialTokenAuthenticationToken(betterproto.Message):
+    """AuthenticationToken is the token of an AUTH_TOKEN Credential"""
+
     authentication_token: str = betterproto.string_field(1)
+    """AuthenticationToken is the authentication token itself"""
 
 
 @dataclass(eq=False, repr=False)
 class CredentialTokenOAuth2Credentials(betterproto.Message):
+    """OAuth2Credentials is the client credentials of an OAUTH2 Credential"""
+
     client_id: str = betterproto.string_field(1)
     """ClientID is the OAuth2 client ID"""
 
@@ -2253,11 +7269,24 @@ class CredentialTokenOAuth2Credentials(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class CredentialTokenAccessToken(betterproto.Message):
+    """AccessToken is the token of an ACCESS_TOKEN Credential"""
+
     access_token: str = betterproto.string_field(3)
+    """AccessToken is the bearer access token itself"""
 
 
 @dataclass(eq=False, repr=False)
 class Session(betterproto.Message):
+    """
+    Session represents an authenticated session of a User. A User can interact
+     with the Cluster and access its Services only through a valid Session which
+     is automatically created by the Cluster upon a successful authentication.
+     The Cluster issues an access token and a refresh token representing the
+     Session's validity and the User has to periodically re-authenticate to keep
+     the Session valid until it eventually expires and is automatically deleted
+     by the Cluster.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2265,7 +7294,7 @@ class Session(betterproto.Message):
     """Kind is the resource name (i.e. `Session`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "SessionSpec" = betterproto.message_field(4)
     """Spec is the Session specification."""
@@ -2276,6 +7305,8 @@ class Session(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SessionSpec(betterproto.Message):
+    """Spec is the Session specification"""
+
     expires_at: datetime = betterproto.message_field(1)
     """ExpiresAt is the timestamp at which the Session expires."""
 
@@ -2283,10 +7314,17 @@ class SessionSpec(betterproto.Message):
     """State is the Session state"""
 
     authorization: "SessionSpecAuthorization" = betterproto.message_field(3)
+    """Authorization sets the authorization-related configuration"""
 
 
 @dataclass(eq=False, repr=False)
 class SessionSpecAuthorization(betterproto.Message):
+    """
+    Authorization sets the Policies that are applied to the Session. These
+     Policies are typically copied from the Credential that created the
+     Session upon a successful authentication.
+    """
+
     policies: List[str] = betterproto.string_field(1)
     """Policies is the list of standalone Policies"""
 
@@ -2296,6 +7334,8 @@ class SessionSpecAuthorization(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SessionStatus(betterproto.Message):
+    """Status is the current status of the Session"""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
     """UserRef is the reference to the User of the Session"""
 
@@ -2335,30 +7375,72 @@ class SessionStatus(betterproto.Message):
     """
 
     credential_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(10)
+    """
+    CredentialRef is the reference of the Credential that created the
+     Session, if any
+    """
+
     ext: Dict[str, "betterproto_lib_google_protobuf.Struct"] = betterproto.map_field(
         11, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """Ext is a map of internal Cluster-managed extension data"""
+
     total_authentications: int = betterproto.uint32_field(12)
+    """
+    TotalAuthentications is the total number of the authentication
+     operations performed by the Session
+    """
+
     scopes: List["Scope"] = betterproto.message_field(13)
     """Scopes is the list of scopes used by the Session"""
 
     total_connections: int = betterproto.uint32_field(14)
+    """
+    TotalConnections is the total number of the connections established by
+     the Session
+    """
+
     last_connections: List["SessionStatusLastConnection"] = betterproto.message_field(
         15
     )
+    """LastConnections is the list of the last connections of the Session"""
+
     is_locked: bool = betterproto.bool_field(16)
+    """IsLocked indicates whether the Session is locked by the Cluster"""
+
     authenticator_action: "SessionStatusAuthenticatorAction" = betterproto.enum_field(
         17
     )
+    """
+    AuthenticatorAction is the Authenticator-related action that the Session
+     is currently required or recommended to perform
+    """
+
     required_authenticator_ref: "__meta_v1__.ObjectReference" = (
         betterproto.message_field(18)
     )
+    """
+    RequiredAuthenticatorRef is the reference of the Authenticator that the
+     Session is required to authenticate with, if any
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusConnection(betterproto.Message):
+    """
+    Connection is the information of the currently connected client of a
+     CLIENT Session
+    """
+
     started_at: datetime = betterproto.message_field(1)
+    """StartedAt is the timestamp at which the connection started"""
+
     last_seen_at: datetime = betterproto.message_field(2)
+    """
+    LastSeenAt is the timestamp at which the connected client was last
+     seen by the Cluster
+    """
+
     upstreams: List["SessionStatusConnectionUpstream"] = betterproto.message_field(3)
     """
     Upstreams is the list of upstreams actually served by this connected
@@ -2416,9 +7498,23 @@ class SessionStatusConnection(betterproto.Message):
      ESSHEnable is set to true
     """
 
+    e_socks5_enable: bool = betterproto.bool_field(14)
+    """ESOCKS5Enable means that serving embedded SOCKS5 Services is enabled"""
+
+    e_socks5_port: int = betterproto.int32_field(15)
+    """
+    ESOCKS5Port is the port number of the embedded SOCKS5 server. Only
+     meaningful if ESOCKS5Enable is set to true
+    """
+
 
 @dataclass(eq=False, repr=False)
 class SessionStatusConnectionServiceOptions(betterproto.Message):
+    """
+    ServiceOptions is the configuration of the Services that the connected
+     Session is willing to serve as upstreams
+    """
+
     serve_all: bool = betterproto.bool_field(1)
     """
     ServeAll means that the Session is willing to serve any Service that
@@ -2428,6 +7524,11 @@ class SessionStatusConnectionServiceOptions(betterproto.Message):
     requested_services: List[
         "SessionStatusConnectionServiceOptionsRequestedService"
     ] = betterproto.message_field(2)
+    """
+    RequestedServices is the list of the Services that the Session
+     explicitly requested to serve
+    """
+
     port_start: int = betterproto.int32_field(3)
     """
     PortStart is the starting listen port used by the client to serve its
@@ -2437,22 +7538,55 @@ class SessionStatusConnectionServiceOptions(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SessionStatusConnectionServiceOptionsRequestedService(betterproto.Message):
+    """
+    RequestedService is a Service that the Session explicitly requested
+     to serve
+    """
+
     service_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """ServiceRef is the reference of the requested Service"""
+
     namespace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """NamespaceRef is the reference of the requested Service's Namespace"""
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusConnectionUpstream(betterproto.Message):
+    """
+    Upstream is a Service that is actually served by the connected
+     Session (i.e. the Session's host reaches the actual upstream on behalf
+     of the Cluster)
+    """
+
     port: int = betterproto.int32_field(1)
+    """Port is the port at which the client listens to serve the upstream"""
+
     l4_type: "SessionStatusConnectionUpstreamL4Type" = betterproto.enum_field(2)
+    """L4Type is the layer-4 protocol of the upstream"""
+
     service_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(3)
+    """ServiceRef is the reference of the served Service"""
+
     namespace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(4)
+    """NamespaceRef is the reference of the served Service's Namespace"""
+
     backend: "SessionStatusConnectionUpstreamBackend" = betterproto.message_field(5)
+    """
+    Backend is the actual upstream reachable from the connected
+     Session's host
+    """
+
     mode: "SessionStatusConnectionUpstreamMode" = betterproto.enum_field(6)
+    """Mode is how the upstream is served by the connected Session"""
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusConnectionUpstreamBackend(betterproto.Message):
+    """
+    Backend is the actual upstream that is reachable from the connected
+     Session's host
+    """
+
     host: str = betterproto.string_field(1)
     """Host is the host of the actual upstream"""
 
@@ -2462,76 +7596,203 @@ class SessionStatusConnectionUpstreamBackend(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SessionStatusConnectionPublishedService(betterproto.Message):
+    """
+    PublishedService is a Service that is published to the connected
+     client's host (i.e. reachable locally at the client's side)
+    """
+
     service_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """ServiceRef is the reference of the published Service"""
+
     port: int = betterproto.int32_field(2)
+    """Port is the local port at which the Service is published"""
+
     address: str = betterproto.string_field(3)
+    """Address is the local address at which the Service is published"""
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthentication(betterproto.Message):
+    """
+    Authentication is the information of a single authentication operation
+     of the Session
+    """
+
     info: "SessionStatusAuthenticationInfo" = betterproto.message_field(1)
+    """Info is the detailed information of the authentication operation"""
+
     set_at: datetime = betterproto.message_field(2)
+    """SetAt is the timestamp at which the authentication was performed"""
+
     token_id: str = betterproto.string_field(3)
+    """
+    TokenID is the ID of the Session's token pair that was issued by this
+     authentication. It is rotated with every re-authentication.
+    """
+
     access_token_duration: "__meta_v1__.Duration" = betterproto.message_field(4)
+    """AccessTokenDuration is the duration of the issued access token"""
+
     refresh_token_duration: "__meta_v1__.Duration" = betterproto.message_field(5)
+    """
+    RefreshTokenDuration is the duration of the issued refresh token. Once
+     the refresh token expires, the Session as a whole is deemed expired.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthenticationInfo(betterproto.Message):
+    """Info is the detailed information of the authentication operation"""
+
     type: "SessionStatusAuthenticationInfoType" = betterproto.enum_field(1)
+    """Type is the method by which the Session was authenticated"""
+
     external: "SessionStatusAuthenticationInfoExternal" = betterproto.message_field(
         2, group="details"
     )
+    """
+    External is the information of an authentication done by an
+     external owner of the Session
+    """
+
     identity_provider: "SessionStatusAuthenticationInfoIdentityProvider" = (
         betterproto.message_field(3, group="details")
     )
+    """
+    IdentityProvider is the information of an IdentityProvider-based
+     authentication
+    """
+
     credential: "SessionStatusAuthenticationInfoCredential" = betterproto.message_field(
         4, group="details"
     )
+    """Credential is the information of a Credential-based authentication"""
+
     authenticator: "SessionStatusAuthenticationInfoAuthenticator" = (
         betterproto.message_field(7, group="details")
     )
+    """
+    Authenticator is the information of an Authenticator-based
+     authentication
+    """
+
     aal: "SessionStatusAuthenticationInfoAal" = betterproto.enum_field(5)
+    """AAL is the authenticator assurance level of the authentication"""
+
     downstream: "SessionStatusAuthenticationInfoDownstream" = betterproto.message_field(
         6
     )
+    """
+    Downstream is the information of the client that performed the
+     authentication
+    """
+
     geoip: "GeoIp" = betterproto.message_field(8)
+    """
+    GeoIP is the geolocation information of the client that performed
+     the authentication. It is only set if geolocation is enabled in the
+     ClusterConfig.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthenticationInfoIdentityProvider(betterproto.Message):
+    """
+    IdentityProvider is the information of an IdentityProvider-based
+     authentication
+    """
+
     identity_provider_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    IdentityProviderRef is the reference of the IdentityProvider that
+     authenticated the User
+    """
+
     type: "IdentityProviderStatusType" = betterproto.enum_field(2)
+    """Type is the type of the IdentityProvider (e.g. OIDC, SAML)"""
+
     identifier: str = betterproto.string_field(3)
+    """
+    Identifier is the value that identifies the User account according
+     to the IdentityProvider
+    """
+
     pic_url: str = betterproto.string_field(4)
+    """
+    PicURL is the URL of the User's picture as provided by the
+     IdentityProvider
+    """
+
     email: str = betterproto.string_field(5)
+    """Email is the User's email as provided by the IdentityProvider"""
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthenticationInfoCredential(betterproto.Message):
+    """Credential is the information of a Credential-based authentication"""
+
     credential_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    CredentialRef is the reference of the Credential that
+     authenticated the User
+    """
+
     type: "CredentialSpecType" = betterproto.enum_field(2)
+    """Type is the type of the Credential"""
+
     token_id: str = betterproto.string_field(3)
+    """
+    TokenID is the ID of the Credential's token that was used for the
+     authentication. It is rotated whenever the Credential is rotated.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthenticationInfoExternal(betterproto.Message):
+    """
+    External is the information of an authentication done by an external
+     owner of the Session
+    """
+
     owner_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """OwnerRef is the reference of the external owner of the Session"""
+
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(2)
+    """Attrs is a map of the attributes provided by the external owner"""
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthenticationInfoAuthenticator(betterproto.Message):
+    """
+    Authenticator is the information of an Authenticator-based
+     authentication (e.g. MFA or a Passkey login)
+    """
+
     authenticator_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    AuthenticatorRef is the reference of the Authenticator that
+     authenticated the User
+    """
+
     type: "AuthenticatorStatusType" = betterproto.enum_field(2)
+    """Type is the type of the Authenticator (e.g. FIDO, TOTP)"""
+
     info: "SessionStatusAuthenticationInfoAuthenticatorInfo" = (
         betterproto.message_field(3)
     )
+    """Info is the type-specific information of the Authenticator"""
+
     mode: "SessionStatusAuthenticationInfoAuthenticatorMode" = betterproto.enum_field(4)
+    """
+    Mode is the role that the Authenticator played in the
+     authentication
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthenticationInfoAuthenticatorInfo(betterproto.Message):
+    """Info is the type-specific information of the Authenticator"""
+
     fido: "SessionStatusAuthenticationInfoAuthenticatorInfoFido" = (
         betterproto.message_field(1, group="type")
     )
@@ -2539,30 +7800,84 @@ class SessionStatusAuthenticationInfoAuthenticatorInfo(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthenticationInfoAuthenticatorInfoFido(betterproto.Message):
+    """FIDO is the information of a FIDO/WebAuthn Authenticator"""
+
     user_present: bool = betterproto.bool_field(1)
+    """UserPresent means that the User presence check was satisfied"""
+
     user_verified: bool = betterproto.bool_field(2)
+    """
+    UserVerified means that the User was verified by the
+     Authenticator (e.g. via a PIN or a biometric)
+    """
+
     is_hardware: bool = betterproto.bool_field(3)
+    """
+    IsHardware means that the Authenticator is hardware-backed
+     (e.g. a security key or a platform authenticator)
+    """
+
     is_software: bool = betterproto.bool_field(4)
+    """
+    IsSoftware means that the Authenticator is software-based
+     (e.g. a password manager)
+    """
+
     is_attestation_verified: bool = betterproto.bool_field(5)
+    """
+    IsAttestationVerified means that the Authenticator's
+     attestation was verified
+    """
+
     is_passkey: bool = betterproto.bool_field(6)
+    """
+    IsPasskey means that the Authenticator is a Passkey (i.e. it
+     uses a resident/discoverable key credential)
+    """
+
     aaguid: str = betterproto.string_field(7)
+    """
+    AAGUID is the Authenticator Attestation GUID that identifies
+     the model of the Authenticator
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusAuthenticationInfoDownstream(betterproto.Message):
+    """
+    Downstream is the information of the client that performed the
+     authentication
+    """
+
     ip_address: str = betterproto.string_field(1)
+    """IPAddress is the IP address of the client"""
+
     user_agent: str = betterproto.string_field(2)
+    """UserAgent is the `User-Agent` request header of the client"""
+
     client_version: str = betterproto.string_field(3)
+    """ClientVersion is the version of the Octelium client"""
 
 
 @dataclass(eq=False, repr=False)
 class SessionStatusLastConnection(betterproto.Message):
+    """
+    LastConnection is the information of a past connection of the Session
+    """
+
     started_at: datetime = betterproto.message_field(1)
+    """StartedAt is the timestamp at which the connection started"""
+
     ended_at: datetime = betterproto.message_field(2)
+    """EndedAt is the timestamp at which the connection ended"""
 
 
 @dataclass(eq=False, repr=False)
 class SessionList(betterproto.Message):
+    """
+    SessionList is the list of Sessions returned by the ListSession method.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2578,6 +7893,15 @@ class SessionList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Secret(betterproto.Message):
+    """
+    Secret stores a sensitive value (e.g. an API key, a password, a private key
+     or a TLS certificate) that is referenced by its name from the other Cluster
+     resources. It avoids storing the sensitive data itself along with the rest
+     of the Cluster configuration. The Cluster does not expose the Secret's data
+     via the API, therefore a Secret that is read back from the API contains
+     everything but its data.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2585,7 +7909,7 @@ class Secret(betterproto.Message):
     """Kind is the resource name (i.e. `Secret`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "SecretSpec" = betterproto.message_field(4)
     """Spec is the Secret specification."""
@@ -2599,24 +7923,37 @@ class Secret(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SecretSpec(betterproto.Message):
+    """Spec is the Secret specification"""
+
     data: "SecretSpecData" = betterproto.message_field(1)
+    """Data is the Secret's sensitive data content"""
 
 
 @dataclass(eq=False, repr=False)
 class SecretSpecData(betterproto.Message):
+    """Data is the Secret's sensitive data content"""
+
     value: str = betterproto.string_field(1, group="type")
+    """Value is a string value"""
+
     value_bytes: bytes = betterproto.bytes_field(2, group="type")
+    """ValueBytes is a raw sequence of bytes value"""
 
 
 @dataclass(eq=False, repr=False)
 class SecretStatus(betterproto.Message):
+    """Status is the current status of the Secret"""
+
     ext: Dict[str, "betterproto_lib_google_protobuf.Struct"] = betterproto.map_field(
         1, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """Ext is a map of internal Cluster-managed extension data"""
 
 
 @dataclass(eq=False, repr=False)
 class SecretData(betterproto.Message):
+    """Data is the Secret's sensitive data content"""
+
     value: str = betterproto.string_field(1, group="type")
     """Value is a string value"""
 
@@ -2626,6 +7963,8 @@ class SecretData(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SecretList(betterproto.Message):
+    """SecretList is the list of Secrets returned by the ListSecret method."""
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2641,6 +7980,15 @@ class SecretList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Credential(betterproto.Message):
+    """
+    Credential is a confidential token that is issued by the Cluster to a
+     certain User to be used later for authentication. Credentials are typically,
+     but not necessarily, created for WORKLOAD Users since HUMAN Users should
+     almost always authenticate via an IdentityProvider. The Policies attached to
+     a Credential are automatically copied to the Sessions created by it upon a
+     successful authentication.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2648,7 +7996,7 @@ class Credential(betterproto.Message):
     """Kind is the resource name (i.e. `Credential`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "CredentialSpec" = betterproto.message_field(4)
     """Spec is the Credential specification."""
@@ -2659,10 +8007,14 @@ class Credential(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class CredentialSpec(betterproto.Message):
+    """Spec is the Credential specification"""
+
     type: "CredentialSpecType" = betterproto.enum_field(1)
     """Type is the type of the Credential"""
 
     user: str = betterproto.string_field(2)
+    """User is the name of the User that the Credential is created for"""
+
     max_authentications: int = betterproto.uint32_field(3)
     """
     MaxAuthentications sets the max number of authentications permitted by
@@ -2673,7 +8025,14 @@ class CredentialSpec(betterproto.Message):
     """ExpiresAt is the timestamp at which the token expires."""
 
     session_type: "SessionStatusType" = betterproto.enum_field(5)
+    """
+    SessionType is the type of the Sessions created by the Credential. It is
+     CLIENT by default.
+    """
+
     authorization: "CredentialSpecAuthorization" = betterproto.message_field(6)
+    """Authorization sets the authorization-related configuration"""
+
     is_disabled: bool = betterproto.bool_field(7)
     """
     IsDisabled disables the Credential and prevents authentication via it.
@@ -2688,6 +8047,11 @@ class CredentialSpec(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class CredentialSpecAuthorization(betterproto.Message):
+    """
+    Authorization sets the Policies that are copied to the Sessions created
+     by the Credential upon a successful authentication
+    """
+
     policies: List[str] = betterproto.string_field(1)
     """Policies is the list of standalone Policies"""
 
@@ -2697,21 +8061,68 @@ class CredentialSpecAuthorization(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class CredentialStatus(betterproto.Message):
+    """Status is the current status of the Credential"""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
     """
     UserRef is the reference to the User who the Credential is created for
     """
 
     id: str = betterproto.string_field(2)
+    """
+    ID is the Credential's identifier. It is used as the OAuth2 client ID
+     for the OAUTH2 Credentials.
+    """
+
     token_id: str = betterproto.string_field(3)
+    """
+    TokenID is the ID of the Credential's currently valid token. It is
+     rotated whenever a new token is generated for the Credential, which
+     immediately invalidates its older token.
+    """
+
     last_rotation_at: datetime = betterproto.message_field(4)
+    """
+    LastRotationAt is the timestamp at which the Credential was last rotated
+    """
+
     total_rotations: int = betterproto.uint32_field(5)
+    """TotalRotations is the total number of the Credential's rotations"""
+
     total_authentications: int = betterproto.uint32_field(6)
+    """
+    TotalAuthentications is the total number of the authentications
+     performed via the Credential
+    """
+
     is_locked: bool = betterproto.bool_field(7)
+    """IsLocked indicates whether the Credential is locked by the Cluster"""
+
+    pkce: "CredentialStatusPkce" = betterproto.message_field(8)
+    """
+    PKCE is set when the Credential is issued to a client login flow that
+     supplied a code challenge.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class CredentialStatusPkce(betterproto.Message):
+    """
+    PKCE binds the Credential to a code challenge supplied by the client
+     that initiated the login.
+    """
+
+    code_challenge: bytes = betterproto.bytes_field(1)
+    """CodeChallenge is the SHA256 digest of the code verifier."""
 
 
 @dataclass(eq=False, repr=False)
 class CredentialList(betterproto.Message):
+    """
+    CredentialList is the list of Credentials returned by the ListCredential
+     method.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2727,6 +8138,14 @@ class CredentialList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Group(betterproto.Message):
+    """
+    Group is a collection of Users according to whatever classification is
+     needed by the Cluster administrators (e.g. roles in a company such as DevOps
+     or developers, different groupings of workloads, etc...). A User can belong
+     to one or more Groups. Groups are especially useful for access control where
+     a Policy can be applied to a whole set of Users at once.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2734,7 +8153,7 @@ class Group(betterproto.Message):
     """Kind is the resource name (i.e. `Group`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "GroupSpec" = betterproto.message_field(4)
     """Spec is the Group specification."""
@@ -2745,14 +8164,26 @@ class Group(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class GroupSpec(betterproto.Message):
+    """Spec is the Group specification"""
+
     authorization: "GroupSpecAuthorization" = betterproto.message_field(1)
     """Authorization sets the authorization-related configuration"""
 
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(2)
+    """
+    Attrs is a map of user-defined attributes, mostly used in authorization
+     rules. It is strongly recommended to stick to camelCase in order to be
+     conformant with Octelium's API naming conventions.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GroupSpecAuthorization(betterproto.Message):
+    """
+    Authorization sets the Policies that are applied to the Users belonging
+     to the Group
+    """
+
     policies: List[str] = betterproto.string_field(1)
     """Policies is the list of standalone Policies"""
 
@@ -2762,13 +8193,18 @@ class GroupSpecAuthorization(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class GroupStatus(betterproto.Message):
+    """Status is the current status of the Group"""
+
     ext: Dict[str, "betterproto_lib_google_protobuf.Struct"] = betterproto.map_field(
         1, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """Ext is a map of internal Cluster-managed extension data"""
 
 
 @dataclass(eq=False, repr=False)
 class GroupList(betterproto.Message):
+    """GroupList is the list of Groups returned by the ListGroup method."""
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2784,6 +8220,14 @@ class GroupList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Device(betterproto.Message):
+    """
+    Device is the Cluster's representation of a User's machine. A Device is
+     optionally registered/enrolled by a logged-in User and it belongs to the one
+     User that registered it. One or more of the User's Sessions can belong to
+     the same Device. It is up to the access control Policies to allow or deny a
+     request based on the Device's information.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2791,7 +8235,7 @@ class Device(betterproto.Message):
     """Kind is the resource name (i.e. `Device`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "DeviceSpec" = betterproto.message_field(4)
     """Spec is the Device specification."""
@@ -2802,14 +8246,22 @@ class Device(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class DeviceSpec(betterproto.Message):
+    """Spec is the Device specification"""
+
     state: "DeviceSpecState" = betterproto.enum_field(1)
     """State is the Device state"""
 
     authorization: "DeviceSpecAuthorization" = betterproto.message_field(2)
+    """Authorization sets the authorization-related configuration"""
 
 
 @dataclass(eq=False, repr=False)
 class DeviceSpecAuthorization(betterproto.Message):
+    """
+    Authorization sets the Policies that are applied to the Sessions
+     belonging to the Device
+    """
+
     policies: List[str] = betterproto.string_field(1)
     """Policies is the list of standalone Policies"""
 
@@ -2819,9 +8271,13 @@ class DeviceSpecAuthorization(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class DeviceStatus(betterproto.Message):
+    """Status is the current status of the Device"""
+
     ext: Dict[str, "betterproto_lib_google_protobuf.Struct"] = betterproto.map_field(
         1, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """Ext is a map of internal Cluster-managed extension data"""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
     """UserRef is a reference to the owner User"""
 
@@ -2829,14 +8285,199 @@ class DeviceStatus(betterproto.Message):
     """OSType is the OS type"""
 
     hostname: str = betterproto.string_field(4)
+    """Hostname is the Device's hostname"""
+
     id: str = betterproto.string_field(5)
+    """
+    ID is a unique Device identifier that is derived from the Device's host
+    """
+
     serial_number: str = betterproto.string_field(6)
+    """SerialNumber is the Device's hardware serial number"""
+
     is_locked: bool = betterproto.bool_field(7)
+    """IsLocked indicates whether the Device is locked by the Cluster"""
+
     mac_addresses: List[str] = betterproto.string_field(8)
+    """
+    MacAddresses is the list of the MAC addresses of the Device's network
+     interfaces
+    """
+
+    posture: "DeviceStatusPosture" = betterproto.message_field(9)
+    """
+    Posture is the Device's security posture as reported by the
+     DeviceManager that the Device is bound to
+    """
+
+    binding: "DeviceStatusBinding" = betterproto.message_field(10)
+    """Binding is the link between the Device and its DeviceManager"""
+
+    probe_attempt: "DeviceStatusProbeAttempt" = betterproto.message_field(11)
+    """ProbeAttempt is the most recent device probing attempt"""
+
+
+@dataclass(eq=False, repr=False)
+class DeviceStatusPosture(betterproto.Message):
+    """
+    Posture is the Device's security posture as reported by the
+     DeviceManager that the Device is bound to (e.g. an EDR or an MDM
+     provider). It is only valid while binding.state is ACCEPTED.
+    """
+
+    risk_level: "DeviceStatusPostureRiskLevel" = betterproto.enum_field(1)
+    """
+    RiskLevel is the overall risk level of the Device as assessed by the
+     provider
+    """
+
+    disk_encryption: "DeviceStatusPostureSignalState" = betterproto.enum_field(2)
+    """DiskEncryption reports whether the Device's disk is encrypted"""
+
+    compliant: "DeviceStatusPostureSignalState" = betterproto.enum_field(3)
+    """
+    Compliant reports whether the Device is compliant with the provider's
+     policies. It is typically reported by the MDM providers.
+    """
+
+    threat_free: "DeviceStatusPostureSignalState" = betterproto.enum_field(4)
+    """
+    ThreatFree reports whether the Device is free of the threats detected
+     by the provider. It is typically reported by the EDR providers.
+    """
+
+    signals: Dict[str, "DeviceStatusPostureSignalState"] = betterproto.map_field(
+        5, betterproto.TYPE_STRING, betterproto.TYPE_ENUM
+    )
+    """
+    Signals is the map of the additional provider-specific signals keyed
+     by the signal's name
+    """
+
+    last_sync_at: datetime = betterproto.message_field(6)
+    """
+    LastSyncAt is the timestamp at which the Posture was last synced from
+     the provider
+    """
+
+    last_seen_at: datetime = betterproto.message_field(7)
+    """
+    LastSeenAt is the timestamp at which the Device was last seen by the
+     provider
+    """
+
+    expires_at: datetime = betterproto.message_field(8)
+    """
+    The PDP MUST treat posture with expiresAt in the past as absent.
+     The device watcher additionally clears expired posture as hygiene.
+    """
+
+    attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(9)
+    """
+    Attrs is a map of the additional provider-specific attributes of the
+     Device. It is mostly used in authorization rules.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class DeviceStatusBinding(betterproto.Message):
+    """
+    Binding is the singular, quasi-permanent link between this Device and
+     one DeviceManager. ownerRef lives here and only here; Posture validity
+     is defined as binding.state == ACCEPTED, so Posture does not carry a
+     duplicate ownerRef that could diverge.
+
+     ACCEPTED and REJECTED are both sticky: reconciliation never overwrites
+     them, and only ResetDeviceBinding / ResetDeviceManagerBindings (or
+     DeviceManager deletion, which auto-resets) clears them. There is no
+     PENDING or EXPIRED state: attempt lifecycle belongs to ProbeAttempt,
+     and an unbound Device simply has no Binding, so nothing dead-ends.
+    """
+
+    uid: str = betterproto.string_field(1)
+    """UID is the unique identifier of the Binding"""
+
+    owner_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    OwnerRef is the reference of the DeviceManager that the Device is
+     bound to
+    """
+
+    external_id: str = betterproto.string_field(3)
+    """
+    ExternalID is the identifier of the Device according to the
+     DeviceManager's provider
+    """
+
+    state: "DeviceStatusBindingState" = betterproto.enum_field(4)
+    """State is the state of the Binding"""
+
+    acceptance_method: "DeviceStatusBindingAcceptanceMethod" = betterproto.enum_field(5)
+    """AcceptanceMethod is how the Binding was accepted"""
+
+    accepted_at: datetime = betterproto.message_field(6)
+    """AcceptedAt is the timestamp at which the Binding was accepted"""
+
+    expires_at: datetime = betterproto.message_field(7)
+    """
+    ExpiresAt is the timestamp at which a WAITING_APPROVAL Binding
+     expires. Expiry clears the Binding so that a later attempt can retry.
+    """
+
+    last_verified_at: datetime = betterproto.message_field(8)
+    """
+    LastVerifiedAt is the timestamp at which the Binding was last verified
+    """
+
+    verification_failures: int = betterproto.uint32_field(9)
+    """
+    VerificationFailures is the number of the consecutive failures to
+     verify the Binding
+    """
+
+
+@dataclass(eq=False, repr=False)
+class DeviceStatusProbeAttempt(betterproto.Message):
+    """
+    ProbeAttempt is the most recent attempt to run the Cluster's device
+     probes on the Device in order to collect the information used to bind it
+     to a DeviceManager
+    """
+
+    uid: str = betterproto.string_field(1)
+    """UID is the unique identifier of the ProbeAttempt"""
+
+    started_at: datetime = betterproto.message_field(2)
+    """StartedAt is the timestamp at which the ProbeAttempt started"""
+
+    probes: List["ClusterConfigStatusDeviceProbe"] = betterproto.message_field(3)
+    """
+    Probes is the list of the Probes that were requested to be run on the
+     Device
+    """
+
+    results: List["DeviceStatusProbeAttemptResult"] = betterproto.message_field(4)
+    """Results is the list of the results of the requested Probes"""
+
+
+@dataclass(eq=False, repr=False)
+class DeviceStatusProbeAttemptResult(betterproto.Message):
+    """Result is the result of running a single Probe"""
+
+    probe_id: str = betterproto.string_field(1)
+    """ProbeID is the identifier of the Probe that produced the Result"""
+
+    output: bytes = betterproto.bytes_field(2, group="type")
+    """Output is the raw output produced by the Probe"""
+
+    error: str = betterproto.string_field(3, group="type")
+    """Error is the error message if running the Probe failed"""
 
 
 @dataclass(eq=False, repr=False)
 class DeviceList(betterproto.Message):
+    """DeviceList is the list of Devices returned by the ListDevice method."""
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2852,78 +8493,165 @@ class DeviceList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ListUserOptions(betterproto.Message):
+    """ListUserOptions is the request of the ListUser method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ListNamespaceOptions(betterproto.Message):
+    """ListNamespaceOptions is the request of the ListNamespace method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ListServiceOptions(betterproto.Message):
+    """ListServiceOptions is the request of the ListService method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
+
     namespace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """NamespaceRef filters the Services by their owner Namespace"""
+
     region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(3)
+    """
+    RegionRef filters the Services by the Region in which they are deployed
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ListSessionOptions(betterproto.Message):
+    """ListSessionOptions is the request of the ListSession method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """UserRef filters the Sessions by their User"""
 
 
 @dataclass(eq=False, repr=False)
 class ListSecretOptions(betterproto.Message):
+    """ListSecretOptions is the request of the ListSecret method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ListCredentialOptions(betterproto.Message):
+    """ListCredentialOptions is the request of the ListCredential method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """UserRef filters the Credentials by their User"""
 
 
 @dataclass(eq=False, repr=False)
 class ListGroupOptions(betterproto.Message):
+    """ListGroupOptions is the request of the ListGroup method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ListDeviceOptions(betterproto.Message):
+    """ListDeviceOptions is the request of the ListDevice method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """UserRef filters the Devices by their User"""
 
 
 @dataclass(eq=False, repr=False)
 class ListConfigOptions(betterproto.Message):
+    """ListConfigOptions is the request of the ListConfig method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
 
 
 @dataclass(eq=False, repr=False)
 class Config(betterproto.Message):
+    """
+    Config stores arbitrary non-sensitive configuration data that is referenced
+     by its name from the other Cluster resources. It is the non-sensitive
+     counterpart of a Secret
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `Config`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "ConfigSpec" = betterproto.message_field(4)
+    """Spec is the Config specification."""
+
     status: "ConfigStatus" = betterproto.message_field(5)
+    """Status is the current status of the Config."""
+
     data: "ConfigData" = betterproto.message_field(6)
+    """Data is the Config's actual data content."""
 
 
 @dataclass(eq=False, repr=False)
 class ConfigSpec(betterproto.Message):
+    """Spec is the Config specification"""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ConfigStatus(betterproto.Message):
+    """Status is the current status of the Config"""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ConfigData(betterproto.Message):
+    """Data is the Config's data content"""
+
     value: str = betterproto.string_field(1, group="type")
     """Value is a string value"""
 
@@ -2945,13 +8673,18 @@ class ConfigData(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ConfigDataDataMap(betterproto.Message):
+    """DataMap is a map of byte array values keyed by a string"""
+
     map: Dict[str, bytes] = betterproto.map_field(
         1, betterproto.TYPE_STRING, betterproto.TYPE_BYTES
     )
+    """Map is the map of the byte array values"""
 
 
 @dataclass(eq=False, repr=False)
 class ConfigList(betterproto.Message):
+    """ConfigList is the list of Configs returned by the ListConfig method."""
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -2967,6 +8700,13 @@ class ConfigList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Scope(betterproto.Message):
+    """
+    Scope restricts what a Session is allowed to reach. A Session that carries
+     no Scopes is unrestricted, otherwise it can only reach what its Scopes
+     allow. Scopes narrow a Session down, they never widen it beyond what the
+     authorization Policies already allow.
+    """
+
     service: "ScopeService" = betterproto.message_field(1, group="type")
     """Service means that this is a Service scope"""
 
@@ -2976,6 +8716,8 @@ class Scope(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ScopeService(betterproto.Message):
+    """Service scopes the access to the Cluster's Services"""
+
     all: "ScopeServiceAll" = betterproto.message_field(1, group="type")
     """All means allow access to all Services"""
 
@@ -2985,11 +8727,15 @@ class ScopeService(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ScopeServiceAll(betterproto.Message):
+    """All allows access to all Services"""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ScopeServiceFilter(betterproto.Message):
+    """Filter restricts the access to certain Services or Namespaces"""
+
     names: List[str] = betterproto.string_field(1)
     """Names is the list of allowed Service names"""
 
@@ -2999,6 +8745,8 @@ class ScopeServiceFilter(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ScopeApi(betterproto.Message):
+    """API scopes the access to the Cluster's own gRPC APIs"""
+
     all: "ScopeApiAll" = betterproto.message_field(1, group="type")
     """All means allow access to all APIs"""
 
@@ -3011,11 +8759,18 @@ class ScopeApi(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ScopeApiAll(betterproto.Message):
+    """All allows access to all APIs"""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ScopeApiFilter(betterproto.Message):
+    """
+    Filter restricts the access to certain gRPC packages, services or
+     methods
+    """
+
     packages: List[str] = betterproto.string_field(1)
     """Packages is the list of gRPC packages"""
 
@@ -3028,6 +8783,12 @@ class ScopeApiFilter(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Policy(betterproto.Message):
+    """
+    Policy is a set of policy-as-code rules that decide whether a request is
+     allowed or denied. A  Policy that is attached to the resources involved in a
+     request is evaluated for that request.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -3035,7 +8796,7 @@ class Policy(betterproto.Message):
     """Kind is the resource name (i.e. `Policy`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "PolicySpec" = betterproto.message_field(4)
     """Spec is the Policy specification."""
@@ -3046,6 +8807,8 @@ class Policy(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class PolicySpec(betterproto.Message):
+    """Spec is the Policy specification"""
+
     rules: List["PolicySpecRule"] = betterproto.message_field(1)
     """Rules is the list of Policy rules"""
 
@@ -3058,6 +8821,12 @@ class PolicySpec(betterproto.Message):
     """
 
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(3)
+    """
+    Attrs is a map of user-defined attributes that can be reused inside the
+     Policy rules. It is strongly recommended to stick to camelCase in order
+     to be conformant with Octelium's API naming conventions.
+    """
+
     is_disabled: bool = betterproto.bool_field(4)
     """
     IsDisabled disables (i.e. deactivates) the Policy. You can use this to
@@ -3068,6 +8837,8 @@ class PolicySpec(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class PolicySpecRule(betterproto.Message):
+    """Rule is a single access control rule of the Policy"""
+
     name: str = betterproto.string_field(1)
     """
     Name is an optional name for the rule. It is currently useful in Logs
@@ -3097,23 +8868,38 @@ class PolicySpecRule(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class PolicySpecEnforcementRule(betterproto.Message):
+    """
+    EnforcementRule is a pre-condition that decides whether the Policy is
+     evaluated at all. If no EnforcementRule matches, or if the list of
+     EnforcementRules is empty, then the Policy is enforced. ENFORCE rules
+     always override IGNORE rules in the same way that DENY rules override
+     ALLOW rules.
+    """
+
     condition: "Condition" = betterproto.message_field(1)
     """Condition is the enforcement rule's Condition"""
 
     effect: "PolicySpecEnforcementRuleEffect" = betterproto.enum_field(2)
     """
-    Effect is the effect of the policy when a match happens to any of the
-     Conditions.
+    Effect is the effect of the enforcement rule when a match happens to
+     any of the Conditions.
     """
 
 
 @dataclass(eq=False, repr=False)
 class PolicyStatus(betterproto.Message):
+    """Status is the current status of the Policy"""
+
     parent_policy_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """ParentPolicyRef is the reference of the parent Policy, if any"""
 
 
 @dataclass(eq=False, repr=False)
 class PolicyList(betterproto.Message):
+    """
+    PolicyList is the list of Policies returned by the ListPolicy method.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -3129,11 +8915,24 @@ class PolicyList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ListPolicyOptions(betterproto.Message):
+    """ListPolicyOptions is the request of the ListPolicy method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
 
 
 @dataclass(eq=False, repr=False)
 class AccessLog(betterproto.Message):
+    """
+    AccessLog is a log entry of a request that and is emitted in real time by a
+     Service to the Cluster collector. It records a User's access to the Service
+     with the application-layer aware information of the protocol used by that
+     Service.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -3149,13 +8948,19 @@ class AccessLog(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntry(betterproto.Message):
+    """Entry is the AccessLog's entry information"""
+
     common: "AccessLogEntryCommon" = betterproto.message_field(1)
+    """Common is the information that is common to every AccessLog entry"""
+
     info: "AccessLogEntryInfo" = betterproto.message_field(2)
     """Info is the log entry information."""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfo(betterproto.Message):
+    """Info is the application-layer specific information of the entry"""
+
     tcp: "AccessLogEntryInfoTcp" = betterproto.message_field(1, group="type")
     """TCP sets the TCP-specific entry details"""
 
@@ -3185,9 +8990,20 @@ class AccessLogEntryInfo(betterproto.Message):
     dns: "AccessLogEntryInfoDns" = betterproto.message_field(9, group="type")
     """DNS sets the DNS-specific entry details"""
 
+    socks5: "AccessLogEntryInfoSocks5" = betterproto.message_field(10, group="type")
+    """SOCKS5 sets the SOCKS5-specific entry details"""
+
+    mcp: "AccessLogEntryInfoMcp" = betterproto.message_field(11, group="type")
+    """MCP sets the Model Context Protocol-specific entry details"""
+
+    llm: "AccessLogEntryInfoLlm" = betterproto.message_field(12, group="type")
+    """LLM sets the LLM-gateway-specific entry details"""
+
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoHttp(betterproto.Message):
+    """HTTP is the HTTP-specific information"""
+
     request: "AccessLogEntryInfoHttpRequest" = betterproto.message_field(1)
     """Request is the HTTP request information."""
 
@@ -3200,6 +9016,8 @@ class AccessLogEntryInfoHttp(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoHttpRequest(betterproto.Message):
+    """Request is the HTTP request information"""
+
     path: str = betterproto.string_field(1)
     """Path is the request's path without the query params."""
 
@@ -3244,6 +9062,8 @@ class AccessLogEntryInfoHttpRequest(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoHttpResponse(betterproto.Message):
+    """Response is the HTTP response information"""
+
     code: int = betterproto.uint32_field(1)
     """Code is the response code."""
 
@@ -3267,6 +9087,8 @@ class AccessLogEntryInfoHttpResponse(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoTcp(betterproto.Message):
+    """TCP is the TCP-specific information"""
+
     type: "AccessLogEntryInfoTcpType" = betterproto.enum_field(1)
     """Type is the entry SSH-specific type"""
 
@@ -3285,6 +9107,8 @@ class AccessLogEntryInfoTcp(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoSsh(betterproto.Message):
+    """SSH is the SSH-specific information"""
+
     type: "AccessLogEntryInfoSshType" = betterproto.enum_field(1)
     """Type is the SSH-specific request type of the entry"""
 
@@ -3320,6 +9144,8 @@ class AccessLogEntryInfoSsh(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoSshStart(betterproto.Message):
+    """Start is the details of a new SSH connection"""
+
     requested_user: str = betterproto.string_field(1)
     """RequestedUser is the requested SSH user by the downstream."""
 
@@ -3332,6 +9158,8 @@ class AccessLogEntryInfoSshStart(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoSshSessionRecording(betterproto.Message):
+    """SessionRecording is a recording chunk of an SSH session"""
+
     type: "AccessLogEntryInfoSshSessionRecordingType" = betterproto.enum_field(1)
     """Type is the recording chunk type"""
 
@@ -3341,18 +9169,30 @@ class AccessLogEntryInfoSshSessionRecording(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoSshSessionRequestExec(betterproto.Message):
+    """SessionRequestExec is the details of a session exec request"""
+
     command: str = betterproto.string_field(1)
     """Command is the command of the exec request"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoSshSessionRequestSubsystem(betterproto.Message):
+    """
+    SessionRequestSubsystem is the details of a session subsystem
+     request
+    """
+
     name: str = betterproto.string_field(1)
     """Name is the name of the subsystem request"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoSshDirectTcpipStart(betterproto.Message):
+    """
+    DirectTCPIPStart is the details of a requested "direct-tcpip"
+     channel
+    """
+
     host: str = betterproto.string_field(1)
     """Host is the destination host of the "direct-tcpip" channel"""
 
@@ -3362,12 +9202,16 @@ class AccessLogEntryInfoSshDirectTcpipStart(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoUdp(betterproto.Message):
+    """UDP is the UDP-specific information"""
+
     type: "AccessLogEntryInfoUdpType" = betterproto.enum_field(1)
     """Type is the UDP-specific log entry type"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoPostgres(betterproto.Message):
+    """Postgres is the PostgreSQL-specific information"""
+
     type: "AccessLogEntryInfoPostgresType" = betterproto.enum_field(1)
     """Type is the PostgreSQL-specific log entry type"""
 
@@ -3389,6 +9233,8 @@ class AccessLogEntryInfoPostgres(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoPostgresStart(betterproto.Message):
+    """Start is the details of the start of a PostgreSQL connection"""
+
     user: str = betterproto.string_field(1)
     """User is the effective user used to connect to the upstream server"""
 
@@ -3419,12 +9265,16 @@ class AccessLogEntryInfoPostgresStart(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoPostgresQuery(betterproto.Message):
+    """Query is the details of a PostgreSQL query message"""
+
     query: str = betterproto.string_field(1)
     """Query is the query in the query message"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoPostgresParse(betterproto.Message):
+    """Parse is the details of a PostgreSQL parse message"""
+
     name: str = betterproto.string_field(1)
     """Name is the name in the parse message"""
 
@@ -3434,51 +9284,90 @@ class AccessLogEntryInfoPostgresParse(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoMySql(betterproto.Message):
+    """MySQL is the MySQL-specific information"""
+
     type: "AccessLogEntryInfoMySqlType" = betterproto.enum_field(1)
+    """Type is the MySQL-specific type of the entry"""
+
     query: "AccessLogEntryInfoMySqlQuery" = betterproto.message_field(
         2, group="details"
     )
+    """Query shows the details of a query command"""
+
     init_db: "AccessLogEntryInfoMySqlInitDb" = betterproto.message_field(
         3, group="details"
     )
+    """
+    InitDB shows the details of a command that changes the default
+     database
+    """
+
     create_db: "AccessLogEntryInfoMySqlCreateDb" = betterproto.message_field(
         4, group="details"
     )
+    """CreateDB shows the details of a command that creates a database"""
+
     drop_db: "AccessLogEntryInfoMySqlDropDb" = betterproto.message_field(
         5, group="details"
     )
+    """DropDB shows the details of a command that drops a database"""
+
     prepare_statement: "AccessLogEntryInfoMySqlPrepareStatement" = (
         betterproto.message_field(6, group="details")
     )
+    """
+    PrepareStatement shows the details of a command that prepares a
+     statement
+    """
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoMySqlQuery(betterproto.Message):
+    """Query is the details of a query command"""
+
     query: str = betterproto.string_field(1)
+    """Query is the query itself"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoMySqlInitDb(betterproto.Message):
+    """InitDB is the details of a command that changes the default database"""
+
     database: str = betterproto.string_field(1)
+    """Database is the name of the database"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoMySqlCreateDb(betterproto.Message):
+    """CreateDB is the details of a command that creates a database"""
+
     database: str = betterproto.string_field(1)
+    """Database is the name of the database"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoMySqlDropDb(betterproto.Message):
+    """DropDB is the details of a command that drops a database"""
+
     database: str = betterproto.string_field(1)
+    """Database is the name of the database"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoMySqlPrepareStatement(betterproto.Message):
+    """
+    PrepareStatement is the details of a command that prepares a
+     statement
+    """
+
     query: str = betterproto.string_field(1)
+    """Query is the query of the prepared statement"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoKubernetes(betterproto.Message):
+    """Kubernetes is the Kubernetes-specific information"""
+
     http: "AccessLogEntryInfoHttp" = betterproto.message_field(1)
     """HTTP shows the underlying HTTP information of the request/response"""
 
@@ -3512,6 +9401,8 @@ class AccessLogEntryInfoKubernetes(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoGrpc(betterproto.Message):
+    """GRPC is the gRPC-specific information"""
+
     http: "AccessLogEntryInfoHttp" = betterproto.message_field(1)
     """HTTP shows the underlying HTTP information of the request/response"""
 
@@ -3539,15 +9430,627 @@ class AccessLogEntryInfoGrpc(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoDns(betterproto.Message):
+    """DNS is the DNS-specific information"""
+
     type: "AccessLogEntryInfoDnsType" = betterproto.enum_field(1)
+    """Type is the type of the DNS query"""
+
     type_id: int = betterproto.int64_field(2)
+    """TypeID is the numeric DNS query type"""
+
     name: str = betterproto.string_field(3)
+    """Name is the queried domain name"""
+
     answer: str = betterproto.string_field(4)
+    """Answer is the answer of the DNS query"""
+
     rcode: int = betterproto.int64_field(5)
+    """Rcode is the DNS response code"""
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoSocks5(betterproto.Message):
+    """SOCKS5 is the SOCKS5-specific information"""
+
+    type: "AccessLogEntryInfoSocks5Type" = betterproto.enum_field(1)
+    """Type is the SOCKS5-specific type of the entry"""
+
+    host: str = betterproto.string_field(2)
+    """Host is the requested destination host"""
+
+    port: int = betterproto.uint32_field(3)
+    """Port is the requested destination port"""
+
+    address_type: "AccessLogEntryInfoSocks5AddressType" = betterproto.enum_field(4)
+    """AddressType is the type of the requested destination address"""
+
+    received_bytes: int = betterproto.uint64_field(5)
+    """
+    ReceivedBytes is the number of bytes received from the downstream.
+     Only used with SESSION_END entries.
+    """
+
+    sent_bytes: int = betterproto.uint64_field(6)
+    """
+    SentBytes is the number of bytes sent to the downstream. Only used
+     with SESSION_END entries.
+    """
+
+    upstream_host: str = betterproto.string_field(7)
+    """UpstreamHost is the host of the upstream SOCKS5 server"""
+
+    upstream_port: int = betterproto.uint32_field(8)
+    """UpstreamPort is the port of the upstream SOCKS5 server"""
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoMcp(betterproto.Message):
+    """MCP is the Model Context Protocol-specific information"""
+
+    http: "AccessLogEntryInfoHttp" = betterproto.message_field(1)
+    """HTTP shows the underlying HTTP information of the request/response"""
+
+    type: "AccessLogEntryInfoMcpType" = betterproto.enum_field(2)
+    """Type is the MCP-specific log entry type"""
+
+    protocol_version: str = betterproto.string_field(3)
+    """
+    ProtocolVersion is the MCP protocol version declared by the request
+     (e.g. "2026-07-28"). Note that it is read from the request itself
+     and it is therefore also set for the requests that are eventually
+     rejected by Octelium.
+    """
+
+    method: str = betterproto.string_field(4)
+    """Method is the JSON-RPC method of the request (e.g. `tools/call`)"""
+
+    name: str = betterproto.string_field(5)
+    """
+    Name is the logical MCP target of the method whenever it has one
+     (i.e. the tool name, the prompt name or the resource URI)
+    """
+
+    request_id: str = betterproto.string_field(6)
+    """RequestID is the JSON-RPC request `id` normalized into a string"""
+
+    is_notification: bool = betterproto.bool_field(7)
+    """IsNotification is set for JSON-RPC notification requests"""
+
+    result_type: str = betterproto.string_field(8)
+    """
+    ResultType is the `resultType` discriminator of a successful result
+     (e.g. "complete", "input_required"). It is a string rather than an
+     enum since MCP extensions can define further values.
+    """
+
+    is_protocol_error: bool = betterproto.bool_field(9)
+    """IsProtocolError is set when the response carried a JSON-RPC `error`"""
+
+    error_code: int = betterproto.int32_field(10)
+    """
+    ErrorCode is the JSON-RPC error code of the response (e.g. -32601
+     for `Method not found` or -32020 for `HeaderMismatch`)
+    """
+
+    error_message: str = betterproto.string_field(11)
+    """ErrorMessage is the JSON-RPC error message of the response"""
+
+    is_tool_error: bool = betterproto.bool_field(12)
+    """
+    IsToolError is set when the method is `tools/call` and the
+     successful result carried an `isError` value. This is a different
+     layer from the ErrorCode field: the call succeeded at the protocol
+     layer while the tool itself failed.
+    """
+
+    event_count: int = betterproto.uint64_field(13)
+    """
+    EventCount is the number of the `text/event-stream` events of the
+     response
+    """
+
+    notification_count: int = betterproto.uint64_field(14)
+    """
+    NotificationCount is the number of the JSON-RPC notifications, such
+     as progress notifications, of the response stream
+    """
+
+    ttl_ms: int = betterproto.uint64_field(15)
+    """TTLMs is the `ttlMs` cache freshness hint of the result, if set"""
+
+    cache_scope: str = betterproto.string_field(16)
+    """CacheScope is the `cacheScope` of the result, if set (e.g. "public")"""
+
+    client: "AccessLogEntryInfoMcpClient" = betterproto.message_field(17)
+    """
+    Client is the client information reported by the downstream itself.
+     It is NOT an identity.
+    """
+
+    session_id: str = betterproto.string_field(18)
+    """
+    SessionID is the value of the `Mcp-Session-Id` header used by the
+     protocol revisions between 2025-03-26 and 2025-11-25. It is an MCP
+     transport identifier that is unrelated to the Octelium Session as
+     well as to the AccessLog entry's own sessionID field.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoMcpClient(betterproto.Message):
+    """Client is the client information reported by the downstream itself"""
+
+    name: str = betterproto.string_field(1)
+    """Name is the name reported by the downstream client itself"""
+
+    version: str = betterproto.string_field(2)
+    """Version is the version reported by the downstream client itself"""
+
+    title: str = betterproto.string_field(3)
+    """
+    Title is the human-readable title reported by the downstream
+     client itself
+    """
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlm(betterproto.Message):
+    """LLM is the LLM-gateway-specific information"""
+
+    http: "AccessLogEntryInfoHttp" = betterproto.message_field(1)
+    """HTTP shows the underlying HTTP information of the request/response"""
+
+    type: "AccessLogEntryInfoLlmType" = betterproto.enum_field(2)
+    """Type is the LLM-specific log entry type"""
+
+    protocol: "ServiceSpecConfigLlmProtocol" = betterproto.enum_field(3)
+    """Protocol is the inference API protocol of the request"""
+
+    operation: "ServiceSpecConfigLlmOperation" = betterproto.enum_field(4)
+    """
+    Operation is the inference operation of the request, normalized
+     across the protocols
+    """
+
+    route: "RequestContextRequestLlmRoute" = betterproto.enum_field(5)
+    """
+    Route is the canonical inference API route of the request. It names
+     the exact surface that the request arrived on, which the Operation
+     field deliberately does not.
+    """
+
+    source: "AccessLogEntryInfoLlmSource" = betterproto.enum_field(6)
+    """Source is what produced the response"""
+
+    is_upstream_invoked: bool = betterproto.bool_field(7)
+    """
+    IsUpstreamInvoked is set for the requests whose inference upstream
+     actually responded. It is not the same fact as the Source field: a
+     response that a Guardrail Plugin blocked has a Source of OCTELIUM
+     and was still generated by the upstream, and therefore still cost
+     whatever the Usage field reports. It is what separates the requests
+     that were rejected before the upstream ran from the ones that were
+     rejected after it did.
+    """
+
+    model: "AccessLogEntryInfoLlmModel" = betterproto.message_field(8)
+    """Model shows which model the request named and which one served it"""
+
+    stream: bool = betterproto.bool_field(9)
+    """Stream is set for the requests that asked for a streamed response"""
+
+    max_output_tokens: int = betterproto.uint64_field(10)
+    """
+    MaxOutputTokens is the maximum output token count that the
+     downstream itself requested. It is zero whenever the request
+     declares none.
+    """
+
+    input_item_count: int = betterproto.uint32_field(11)
+    """
+    InputItemCount is the number of the input items (i.e. the messages
+     or the embedding inputs) of the request
+    """
+
+    has_image_input: bool = betterproto.bool_field(12)
+    """HasImageInput is set for the requests that carry image input"""
+
+    has_audio_input: bool = betterproto.bool_field(13)
+    """HasAudioInput is set for the requests that carry audio input"""
+
+    estimated_input_tokens: int = betterproto.uint64_field(14)
+    """
+    EstimatedInputTokens is Octelium's own pre-flight input token
+     estimate. It is always set for the parsed inference requests
+     regardless of the Usage field, and it must never be treated as a
+     billing truth. Read the EstimateQuality field alongside it.
+    """
+
+    estimate_quality: "RequestContextRequestLlmEstimateQuality" = (
+        betterproto.enum_field(15)
+    )
+    """
+    EstimateQuality shows whether the EstimatedInputTokens field
+     accounted for the entire input of the request
+    """
+
+    usage: "AccessLogEntryInfoLlmUsage" = betterproto.message_field(16)
+    """Usage is the token usage reported by the upstream provider itself"""
+
+    response_id: str = betterproto.string_field(17)
+    """
+    ResponseID is the response identifier reported by the upstream
+     provider itself
+    """
+
+    finish_reason: "AccessLogEntryInfoLlmFinishReason" = betterproto.enum_field(18)
+    """
+    FinishReason is the completion status of the response, normalized
+     across the providers
+    """
+
+    raw_finish_reason: str = betterproto.string_field(19)
+    """
+    RawFinishReason is the completion status exactly as the upstream
+     provider spelled it (e.g. "stop", "end_turn", "max_tokens"). It is
+     kept alongside the normalized FinishReason field for the
+     investigations that need the provider's own vocabulary.
+    """
+
+    time_to_first_token: "__meta_v1__.Duration" = betterproto.message_field(20)
+    """
+    TimeToFirstToken is the duration between accepting the request and
+     the first generated content of a streamed response
+    """
+
+    event_count: int = betterproto.uint64_field(21)
+    """
+    EventCount is the number of the events of a streamed response,
+     whether they are the events of a `text/event-stream` or the messages
+     of the AWS event stream that the BEDROCK protocol serves
+    """
+
+    reasoning: "AccessLogEntryInfoLlmReasoning" = betterproto.message_field(22)
+    """
+    Reasoning is the reasoning configuration that the upstream was
+     served
+    """
+
+    tools: "AccessLogEntryInfoLlmTools" = betterproto.message_field(23)
+    """Tools is the tool surface that the request carried"""
+
+    guardrails: List["AccessLogEntryInfoLlmGuardrail"] = betterproto.message_field(24)
+    """
+    Guardrails is the outcome of every Guardrail Plugin that was applied
+     to the request, one entry per Plugin and leg
+    """
+
+    token_rate_limit: "AccessLogEntryInfoLlmTokenRateLimit" = betterproto.message_field(
+        25
+    )
+    """TokenRateLimit is the outcome of the token quota enforcement"""
+
+    semantic_cache: "AccessLogEntryInfoLlmSemanticCache" = betterproto.message_field(26)
+    """SemanticCache is the outcome of the SemanticCache Plugin"""
+
+    semantic_router: "AccessLogEntryInfoLlmSemanticRouter" = betterproto.message_field(
+        27
+    )
+    """SemanticRouter is the outcome of the SemanticRouter Plugin"""
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmModel(betterproto.Message):
+    """Model shows which model the request named and which one served it"""
+
+    requested: str = betterproto.string_field(1)
+    """
+    Requested is the model name requested by the downstream, verbatim.
+     It is set even for the requests that Octelium rejected, since it
+     is read from the request itself.
+    """
+
+    effective: str = betterproto.string_field(2)
+    """
+    Effective is the model name that Octelium proxied to the upstream.
+     It differs from the Requested one exactly when the Source field is
+     set, which is the record of the Service overriding what the
+     downstream asked for.
+    """
+
+    reported: str = betterproto.string_field(3)
+    """
+    Reported is the model name that the upstream provider itself named
+     in its response. It resolves the aliases and the unpinned names
+     that the Effective one can carry, and for a request that the
+     SemanticCache served it is the model that generated the cached
+     response rather than one that was invoked now.
+    """
+
+    source: "AccessLogEntryInfoLlmModelSource" = betterproto.enum_field(4)
+    """Source is what decided the Effective model"""
+
+    plugin: str = betterproto.string_field(5)
+    """
+    Plugin is the name of the Plugin that decided the Effective model.
+     It is empty whenever the Source is not a Plugin.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmReasoning(betterproto.Message):
+    """
+    Reasoning is the reasoning configuration that the upstream was
+     actually served. It is only set for the requests whose reasoning
+     configuration the Service itself decided, since Octelium does not
+     read the one that a downstream sets for itself.
+    """
+
+    is_disabled: bool = betterproto.bool_field(1)
+    """
+    IsDisabled is set for the requests that were proxied with
+     reasoning explicitly turned off
+    """
+
+    effort: str = betterproto.string_field(2)
+    """
+    Effort is the ordinal reasoning effort that was served to the
+     upstream, verbatim. It is empty for the models that accept a
+     numeric budget instead.
+    """
+
+    token_budget: int = betterproto.uint64_field(3)
+    """
+    TokenBudget is the reasoning token budget that was served to the
+     upstream. It is zero for the models that accept an ordinal effort
+     instead.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmTools(betterproto.Message):
+    """Tools is the tool surface that the request carried"""
+
+    count: int = betterproto.uint32_field(1)
+    """
+    Count is the number of the tools that the upstream was offered,
+     after every Tools Plugin was applied
+    """
+
+    names: List[str] = betterproto.string_field(2)
+    """
+    Names is the sorted list of the names of those tools. It is
+     bounded, so a request that declares an unusually large number of
+     them carries a sample rather than a complete list, which is
+     visible as a Names list shorter than the Count field.
+    """
+
+    removed_count: int = betterproto.uint32_field(3)
+    """
+    RemovedCount is the number of the tools that the downstream
+     declared and that a Tools Plugin removed before the request was
+     proxied
+    """
+
+    removed_names: List[str] = betterproto.string_field(4)
+    """
+    RemovedNames is the sorted list of the names of those removed
+     tools. It is the record of what the downstream tried to expose to
+     the model and was not allowed to, which is the question that the
+     RemovedCount field alone cannot answer. It is bounded in the same
+     way as the Names field.
+    """
+
+    called_names: List[str] = betterproto.string_field(5)
+    """
+    CalledNames is the sorted list of the distinct names of the tools
+     that the model asked to invoke in its response. It is the record
+     of what the model tried to do rather than of what it was allowed
+     to do, which is why it is kept separately from the Names field.
+     Note that it is a set of identities rather than a count of calls:
+     read the CallCount field for the latter.
+    """
+
+    call_count: int = betterproto.uint32_field(6)
+    """
+    CallCount is the number of the tool calls that the response
+     carried. It counts the calls rather than the distinct tools, so a
+     response that invoked one tool twenty times has a CallCount of
+     twenty and a single CalledNames entry.
+    """
+
+    is_called_names_truncated: bool = betterproto.bool_field(7)
+    """
+    IsCalledNamesTruncated is set whenever the response carried more
+     distinct tool identities than the CalledNames list can hold. It
+     exists because the absence of a name from a bounded list is not
+     evidence that the tool was not called, and a security dashboard
+     that treated it as such would report a false negative.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmGuardrail(betterproto.Message):
+    """
+    Guardrail is the outcome that one Guardrail Plugin reached on one
+     leg of the exchange. A request carries one of them per applied
+     Plugin and leg rather than a single summary, since a redaction that
+     one Plugin performed is a security event in its own right and it
+     would be lost by a record that only kept the strongest outcome of
+     the request.
+    """
+
+    result: "AccessLogEntryInfoLlmGuardrailResult" = betterproto.enum_field(1)
+    """Result is the outcome that the Plugin reached on the leg"""
+
+    leg: "ServiceSpecConfigLlmPluginGuardrailLeg" = betterproto.enum_field(2)
+    """
+    Leg is the part of the exchange that the Plugin inspected in order
+     to reach the Result
+    """
+
+    plugin: str = betterproto.string_field(3)
+    """Plugin is the name of the Guardrail Plugin"""
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmTokenRateLimit(betterproto.Message):
+    """
+    TokenRateLimit is the outcome of the token quota enforcement of the
+     request. It is a single record rather than one per Plugin because
+     the enforcement has a single outcome: every applied Plugin has to
+     admit the request, so a denial is always the decision of exactly one
+     of them and an admission is the decision of none of them in
+     particular. The per-Plugin reservation and charge counts are
+     deliberately not recorded, since they are quantities of separate
+     quotas that cannot be summed into one number.
+    """
+
+    result: "AccessLogEntryInfoLlmTokenRateLimitResult" = betterproto.enum_field(1)
+    """Result is the outcome of the quota enforcement"""
+
+    plugin: str = betterproto.string_field(2)
+    """
+    Plugin is the name of the TokenRateLimit Plugin that denied the
+     request. It is empty for an ALLOWED result, since no single
+     Plugin decided it.
+    """
+
+    scope: "ServiceSpecConfigLlmPluginTokenRateLimitScope" = betterproto.enum_field(3)
+    """
+    Scope is the token count that the denying Plugin meters. It is
+     unset for an ALLOWED result.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmSemanticCache(betterproto.Message):
+    """SemanticCache is the outcome of the SemanticCache Plugin"""
+
+    result: "AccessLogEntryInfoLlmSemanticCacheResult" = betterproto.enum_field(1)
+    """Result is the outcome of the cache lookup"""
+
+    similarity: float = betterproto.float_field(2)
+    """
+    Similarity is the cosine similarity of the entry that was served.
+     It is only set for a SEMANTIC_HIT.
+    """
+
+    is_stored: bool = betterproto.bool_field(3)
+    """
+    IsStored is set for the requests whose response was stored in the
+     cache
+    """
+
+    plugin: str = betterproto.string_field(4)
+    """Plugin is the name of the SemanticCache Plugin that was applied"""
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmSemanticRouter(betterproto.Message):
+    """
+    SemanticRouter is the outcome of the SemanticRouter Plugin. It is
+     recorded separately from the Model field because a Model Plugin
+     overwrites the model that the SemanticRouter selected, which would
+     otherwise erase every trace that the request was routed at all.
+    """
+
+    result: "AccessLogEntryInfoLlmSemanticRouterResult" = betterproto.enum_field(1)
+    """Result is the outcome of the routing decision"""
+
+    route: str = betterproto.string_field(2)
+    """
+    Route is the name of the Route of the Plugin that matched. It is
+     only set for a MATCH. Note that it is unrelated to the LLM entry's
+     own `route` field, which names the inference API surface instead.
+    """
+
+    similarity: float = betterproto.float_field(3)
+    """
+    Similarity is the cosine similarity at which the Route matched. It
+     is only set for a MATCH.
+    """
+
+    model: str = betterproto.string_field(4)
+    """
+    Model is the model that the Plugin selected. Note that it is not
+     necessarily the model that the request was eventually served with,
+     since a Model Plugin overwrites it.
+    """
+
+    plugin: str = betterproto.string_field(5)
+    """
+    Plugin is the name of the SemanticRouter Plugin that reached the
+     decision
+    """
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmUsage(betterproto.Message):
+    """
+    Usage is the token usage of the request as reported by the upstream
+     provider itself. It is only set for the requests whose provider
+     reported one at all, so it never carries an Octelium estimate and it
+     is unset for a request that the SemanticCache served, which invoked
+     no inference at all. Summing its counts is therefore a sum of the
+     tokens that were really consumed rather than of a mixture of
+     measurements and guesses. Read the EstimatedInputTokens field for
+     the requests that carry no usage.
+    """
+
+    state: "AccessLogEntryInfoLlmUsageState" = betterproto.enum_field(1)
+    """State is whether the reported usage is the final one"""
+
+    input_tokens: int = betterproto.uint64_field(2)
+    """InputTokens is the number of the input/prompt tokens"""
+
+    output_tokens: int = betterproto.uint64_field(3)
+    """OutputTokens is the number of the generated/completion tokens"""
+
+    total_tokens: int = betterproto.uint64_field(4)
+    """
+    TotalTokens is the total token count reported by the upstream
+     provider itself. Whenever the provider reports none, which is the
+     case for the ANTHROPIC protocol as well as for many
+     OpenAI-compatible servers, it is computed as the sum of the input
+     and output tokens plus only those cache token counts that the
+     provider accounts for additively (i.e. the ANTHROPIC ones). The
+     OPENAI cached and reasoning token counts are already included in
+     the input and the output counts respectively and they are
+     therefore never added again.
+    """
+
+    cache_read_input_tokens: int = betterproto.uint64_field(5)
+    """
+    CacheReadInputTokens is the number of the input tokens that were
+     read from the provider's prompt cache. Note that the providers
+     account for it differently: it is a subset of the InputTokens
+     field for the OPENAI protocol while it is additive to it for the
+     ANTHROPIC one.
+    """
+
+    cache_write_input_tokens: int = betterproto.uint64_field(6)
+    """
+    CacheWriteInputTokens is the number of the input tokens that were
+     written to the provider's prompt cache. It is only reported by the
+     ANTHROPIC protocol and it is additive to the InputTokens field.
+    """
+
+    reasoning_output_tokens: int = betterproto.uint64_field(7)
+    """
+    ReasoningOutputTokens is the number of the reasoning tokens. It is
+     only reported by the OPENAI protocol where it is already included
+     in the OutputTokens field.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryCommon(betterproto.Message):
+    """
+    Common is the information that is common to every AccessLog entry
+     regardless of the Service's mode
+    """
+
     started_at: datetime = betterproto.message_field(1)
     """StartedAt is the start time of the connection/request."""
 
@@ -3572,37 +10075,81 @@ class AccessLogEntryCommon(betterproto.Message):
     """SessionRef refers the Session."""
 
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(7)
+    """UserRef refers the User."""
+
     device_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(8)
+    """DeviceRef refers the Device, if available."""
+
     service_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(9)
     """ServiceRef refers the Service."""
 
     namespace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(10)
+    """NamespaceRef refers the Service's Namespace."""
+
     region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(11)
+    """RegionRef refers the Region in which the Service is deployed."""
+
     connection_id: str = betterproto.string_field(12)
+    """
+    ConnectionID is the identifier that correlates all the entries that
+     belong to the same connection
+    """
+
     session_id: str = betterproto.string_field(13)
+    """SessionID is the identifier of the Session that issued the request"""
+
     sequence: int = betterproto.int64_field(14)
+    """Sequence is the position of the entry within its connection"""
+
     is_public: bool = betterproto.bool_field(15)
+    """
+    IsPublic shows whether the request was served over the public
+     clientless/BeyondCorp mode
+    """
+
     is_anonymous: bool = betterproto.bool_field(16)
+    """IsAnonymous shows whether the request was served anonymously"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryCommonReason(betterproto.Message):
+    """Reason is why the request was allowed or denied"""
+
     type: "AccessLogEntryCommonReasonType" = betterproto.enum_field(1)
+    """Type is the reason of the authorization decision"""
+
     details: "AccessLogEntryCommonReasonDetails" = betterproto.message_field(2)
+    """Details is the type-specific details of the Reason"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryCommonReasonDetails(betterproto.Message):
+    """Details is the type-specific details of the Reason"""
+
     policy_match: "AccessLogEntryCommonReasonDetailsPolicyMatch" = (
         betterproto.message_field(1, group="type")
     )
+    """
+    PolicyMatch shows the details of the Policy rule that triggered
+     the decision
+    """
+
     session_not_active: "AccessLogEntryCommonReasonDetailsSessionNotActive" = (
         betterproto.message_field(2, group="type")
     )
+    """
+    SessionNotActive shows the details of the Session that is not
+     active
+    """
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryCommonReasonDetailsPolicyMatch(betterproto.Message):
+    """
+    PolicyMatch is the details of the Policy rule that triggered the
+     authorization decision
+    """
+
     policy: "AccessLogEntryCommonReasonDetailsPolicyMatchPolicy" = (
         betterproto.message_field(1, group="type")
     )
@@ -3620,11 +10167,19 @@ class AccessLogEntryCommonReasonDetailsPolicyMatch(betterproto.Message):
     """
 
     rule_name: str = betterproto.string_field(3)
+    """
+    RuleName is the name of the Policy rule that matched, if
+     available
+    """
+
     priority: int = betterproto.int32_field(4)
+    """Priority is the priority level of the Policy rule that matched"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryCommonReasonDetailsPolicyMatchInlinePolicy(betterproto.Message):
+    """InlinePolicy is the inline Policy whose rule matched"""
+
     resource_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
     """
     ResourceRef is the reference to the Resource whose inline
@@ -3637,40 +10192,65 @@ class AccessLogEntryCommonReasonDetailsPolicyMatchInlinePolicy(betterproto.Messa
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryCommonReasonDetailsPolicyMatchPolicy(betterproto.Message):
+    """Policy is the standalone Policy whose rule matched"""
+
     policy_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
     """PolicyRef is the reference to the Policy"""
 
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryCommonReasonDetailsSessionNotActive(betterproto.Message):
+    """
+    SessionNotActive is the details of a decision that was triggered
+     by a Session that is not active
+    """
+
     state: "SessionSpecState" = betterproto.enum_field(1)
+    """State is the state of the Session at the time of the request"""
 
 
 @dataclass(eq=False, repr=False)
 class ListIdentityProviderOptions(betterproto.Message):
+    """
+    ListIdentityProviderOptions is the request of the ListIdentityProvider
+     method.
+    """
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
 
 
 @dataclass(eq=False, repr=False)
 class IdentityProvider(betterproto.Message):
+    """
+    IdentityProvider represents an identity provider (IdP) that is used by the
+     Cluster to authenticate and re-authenticate the Users in order for them to
+     obtain and keep a valid Session.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
     kind: str = betterproto.string_field(2)
-    """Kind is the resource name (i.e. `User`)."""
+    """Kind is the resource name (i.e. `IdentityProvider`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
     """Metadata is the object's metadata."""
 
     spec: "IdentityProviderSpec" = betterproto.message_field(4)
-    """Spec is the User specification."""
+    """Spec is the IdentityProvider specification."""
 
     status: "IdentityProviderStatus" = betterproto.message_field(5)
-    """Status is the current status of the User."""
+    """Status is the current status of the IdentityProvider."""
 
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpec(betterproto.Message):
+    """Spec is the IdentityProvider specification"""
+
     is_disabled: bool = betterproto.bool_field(1)
     """IsDisabled disables the IdentityProvider"""
 
@@ -3697,6 +10277,12 @@ class IdentityProviderSpec(betterproto.Message):
     post_authentication_rules: List["IdentityProviderSpecPostAuthenticationRule"] = (
         betterproto.message_field(9)
     )
+    """
+    PostAuthenticationRules is the list of the rules that decide whether an
+     otherwise successful authentication via the IdentityProvider is
+     eventually accepted or rejected
+    """
+
     github: "IdentityProviderSpecGithub" = betterproto.message_field(5, group="type")
     """Github sets the Github OAuth2 provider specific options."""
 
@@ -3717,19 +10303,32 @@ class IdentityProviderSpec(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpecGithub(betterproto.Message):
+    """Github sets the GitHub OAuth2 provider specific options"""
+
     client_id: str = betterproto.string_field(1)
+    """ClientID is the GitHub OAuth2 client ID"""
+
     client_secret: "IdentityProviderSpecGithubClientSecret" = betterproto.message_field(
         2
     )
+    """ClientSecret is the GitHub OAuth2 client secret"""
 
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpecGithubClientSecret(betterproto.Message):
+    """ClientSecret is the GitHub OAuth2 client secret"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains the
+     ClientSecret
+    """
 
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpecOidc(betterproto.Message):
+    """OIDC sets the OpenID Connect provider specific options"""
+
     client_id: str = betterproto.string_field(1)
     """ClientID is the OIDC OAuth2 client ID"""
 
@@ -3767,11 +10366,19 @@ class IdentityProviderSpecOidc(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpecOidcClientSecret(betterproto.Message):
+    """ClientSecret is the OIDC OAuth2 client secret"""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value contains the
+     ClientSecret
+    """
 
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpecSaml(betterproto.Message):
+    """SAML sets the SAML 2.0 identity provider specific options"""
+
     metadata_url: str = betterproto.string_field(1, group="metadataType")
     """MetadataURL is the SAML 2.0 metadata URL"""
 
@@ -3801,15 +10408,41 @@ class IdentityProviderSpecSaml(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpecOidcIdentityToken(betterproto.Message):
+    """
+    OIDCIdentityToken sets the OIDC-based assertion options used for
+     WORKLOAD User authentication. The WORKLOAD User authenticates via an
+     identity token that is issued by an external OIDC-compliant issuer (e.g.
+     a CI platform or a cloud provider) instead of an interactive login.
+    """
+
     issuer_url: str = betterproto.string_field(1, group="type")
+    """
+    IssuerURL is the issuer URL from which the OIDC configuration, and
+     subsequently the JWKS, is obtained automatically
+    """
+
     jwks_url: str = betterproto.string_field(2, group="type")
+    """JWKSURL is the URL of the issuer's JSON Web Key Set"""
+
     jwks_content: str = betterproto.string_field(3, group="type")
+    """JWKSContent is the inline content of the issuer's JSON Web Key Set"""
+
     issuer: str = betterproto.string_field(4)
+    """Issuer is the expected value of the identity token's `iss` claim"""
+
     audience: str = betterproto.string_field(5)
+    """Audience is the expected value of the identity token's `aud` claim"""
 
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpecAalRule(betterproto.Message):
+    """
+    AALRule sets the authenticator assurance level (AAL) of the
+     authentication based on the content of the IdentityProvider's assertion.
+     The AAL of the first rule whose Condition matches is the one that is
+     used.
+    """
+
     condition: "Condition" = betterproto.message_field(1)
     """Condition is the rule's condition"""
 
@@ -3819,24 +10452,44 @@ class IdentityProviderSpecAalRule(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderSpecPostAuthenticationRule(betterproto.Message):
+    """
+    PostAuthenticationRule decides whether an otherwise successful
+     authentication via the IdentityProvider is eventually accepted or
+     rejected
+    """
+
     condition: "Condition" = betterproto.message_field(1)
+    """Condition is the rule's Condition"""
+
     effect: "IdentityProviderSpecPostAuthenticationRuleEffect" = betterproto.enum_field(
         2
     )
     """
-    Effect is the effect of the policy when a match happens to any of the
+    Effect is the effect of the rule when a match happens to any of the
      Conditions.
     """
 
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderStatus(betterproto.Message):
+    """Status is the current status of the IdentityProvider"""
+
     type: "IdentityProviderStatusType" = betterproto.enum_field(1)
+    """Type is the type of the IdentityProvider"""
+
     is_locked: bool = betterproto.bool_field(2)
+    """
+    IsLocked indicates whether the IdentityProvider is locked by the Cluster
+    """
 
 
 @dataclass(eq=False, repr=False)
 class IdentityProviderList(betterproto.Message):
+    """
+    IdentityProviderList is the list of IdentityProviders returned by the
+     ListIdentityProvider method.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -3844,7 +10497,7 @@ class IdentityProviderList(betterproto.Message):
     """Kind is the resource name (i.e. `IdentityProviderList`)."""
 
     items: List["IdentityProvider"] = betterproto.message_field(3)
-    """Items is the list of IdentityProvider items."""
+    """Items is the list of IdentityProviders."""
 
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
@@ -3852,58 +10505,118 @@ class IdentityProviderList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Region(betterproto.Message):
+    """
+    Region represents a single Kubernetes cluster of the Octelium Cluster. A
+     Cluster is designed to run on top of a single Kubernetes cluster or to be
+     distributed over multiple ones where each Kubernetes cluster acts as a
+     Region. The initial Kubernetes cluster represents the `default` Region upon
+     which the Services are deployed by default.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `Region`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "RegionSpec" = betterproto.message_field(4)
+    """Spec is the Region specification."""
+
     status: "RegionStatus" = betterproto.message_field(5)
+    """Status is the current status of the Region."""
 
 
 @dataclass(eq=False, repr=False)
 class RegionSpec(betterproto.Message):
+    """Spec is the Region specification"""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class RegionStatus(betterproto.Message):
+    """Status is the current status of the Region"""
+
     index: int = betterproto.int32_field(1)
+    """Index is the Region's index within the Cluster"""
+
     ingress_addresses: List[str] = betterproto.string_field(2)
+    """
+    IngressAddresses is the list of the public addresses of the Region's
+     Ingress
+    """
+
     public_hostname: str = betterproto.string_field(3)
+    """PublicHostname is the Region's public hostname"""
+
     ext: Dict[str, "betterproto_lib_google_protobuf.Struct"] = betterproto.map_field(
         4, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """Ext is a map of internal Cluster-managed extension data"""
+
     version: str = betterproto.string_field(5)
+    """Version is the Region's version"""
+
     version_info_map: Dict[str, "RegionStatusVersionInfo"] = betterproto.map_field(
         6, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """
+    VersionInfoMap is the map of the version information of the Region's
+     components keyed by the component's name
+    """
 
 
 @dataclass(eq=False, repr=False)
 class RegionStatusVersionInfo(betterproto.Message):
+    """VersionInfo is the version information of a single Cluster component"""
+
     version: str = betterproto.string_field(1)
+    """Version is the component's version"""
+
     package: str = betterproto.string_field(2)
+    """Package is the name of the component's package"""
+
     id: str = betterproto.string_field(3)
+    """ID is the unique identifier of the version"""
+
     set_at: datetime = betterproto.message_field(4)
+    """SetAt is the timestamp at which the version was set"""
+
     ext: Dict[str, "betterproto_lib_google_protobuf.Struct"] = betterproto.map_field(
         5, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """Ext is a map of internal Cluster-managed extension data"""
 
 
 @dataclass(eq=False, repr=False)
 class RegionList(betterproto.Message):
+    """RegionList is the list of Regions returned by the ListRegion method."""
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `RegionList`)."""
+
     items: List["Region"] = betterproto.message_field(3)
+    """Items is the list of Regions."""
+
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
 
 
 @dataclass(eq=False, repr=False)
 class Gateway(betterproto.Message):
+    """
+    Gateway represents a Kubernetes node that is part of the data-plane of the
+     Cluster. A Gateway hosts the Services running on that node and maintains the
+     WireGuard/QUIC tunnel interfaces at which the Users' tunneled traffic is
+     terminated.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -3911,7 +10624,7 @@ class Gateway(betterproto.Message):
     """Kind is the resource name (i.e. `Gateway`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "GatewaySpec" = betterproto.message_field(4)
     """Spec is the Gateway specification."""
@@ -3922,11 +10635,15 @@ class Gateway(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class GatewaySpec(betterproto.Message):
+    """Spec is the Gateway specification"""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class GatewayStatus(betterproto.Message):
+    """Status is the current status of the Gateway"""
+
     region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
     """RegionRef is the reference to the owner Region"""
 
@@ -3960,13 +10677,17 @@ class GatewayStatus(betterproto.Message):
     hostname: str = betterproto.string_field(8)
     """
     Hostname is the public hostname of the Gateway when connected to by
-     the User clients. Currently sed by QUICv0
-     Gateways.
+     the User clients. Currently used by QUICv0 Gateways.
     """
+
+    index: Optional[int] = betterproto.int32_field(9, optional=True)
+    """Index is the Gateway's index within its Region"""
 
 
 @dataclass(eq=False, repr=False)
 class GatewayStatusWireGuard(betterproto.Message):
+    """WireGuard is the Gateway's WireGuard-specific information"""
+
     port: int = betterproto.int32_field(1)
     """Port is the listen port"""
 
@@ -3974,16 +10695,23 @@ class GatewayStatusWireGuard(betterproto.Message):
     """PublicKey is the current public key"""
 
     key_rotated_at: datetime = betterproto.message_field(3)
+    """KeyRotatedAt is the timestamp at which the key pair was last rotated"""
 
 
 @dataclass(eq=False, repr=False)
 class GatewayStatusQuicv0(betterproto.Message):
+    """QUICV0 is the Gateway's QUICv0-specific information"""
+
     port: int = betterproto.int32_field(1)
     """Port is the listen port"""
 
 
 @dataclass(eq=False, repr=False)
 class GatewayList(betterproto.Message):
+    """
+    GatewayList is the list of Gateways returned by the ListGateway method.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -3999,17 +10727,38 @@ class GatewayList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ListGatewayOptions(betterproto.Message):
+    """ListGatewayOptions is the request of the ListGateway method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
+
     region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """RegionRef filters the Gateways by their owner Region"""
 
 
 @dataclass(eq=False, repr=False)
 class ListRegionOptions(betterproto.Message):
+    """ListRegionOptions is the request of the ListRegion method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
 
 
 @dataclass(eq=False, repr=False)
 class Condition(betterproto.Message):
+    """
+    Condition is a policy-as-code expression that is evaluated against the
+     request context. It is used by the Policy rules, the Service dynamic
+     configuration rules, the HTTP Plugins as well as by the IdentityProvider
+     rules.
+    """
+
     match_any: bool = betterproto.bool_field(1, group="type")
     """MatchAny matches anything"""
 
@@ -4037,46 +10786,77 @@ class Condition(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ConditionAll(betterproto.Message):
+    """All acts as a logical AND operator on its list of Conditions"""
+
     of: List["Condition"] = betterproto.message_field(1)
+    """Of is the list of the Conditions that must all match"""
 
 
 @dataclass(eq=False, repr=False)
 class ConditionAny(betterproto.Message):
+    """Any acts as a logical OR operator on its list of Conditions"""
+
     of: List["Condition"] = betterproto.message_field(1)
-    """Expressions is the list of CEL expressions"""
+    """Of is the list of the Conditions of which at least one must match"""
 
 
 @dataclass(eq=False, repr=False)
 class ConditionNone(betterproto.Message):
+    """None acts as a logical NOR operator on its list of Conditions"""
+
     of: List["Condition"] = betterproto.message_field(1)
-    """Expressions is the list of CEL expressions"""
+    """Of is the list of the Conditions of which none must match"""
 
 
 @dataclass(eq=False, repr=False)
 class ConditionOpa(betterproto.Message):
+    """OPA evaluates the Condition via an Open Policy Agent Rego script"""
+
     inline: str = betterproto.string_field(1, group="type")
     """Inline is the OPA Rego script directly provided as a string"""
 
 
 @dataclass(eq=False, repr=False)
 class GetClusterConfigRequest(betterproto.Message):
+    """
+    GetClusterConfigRequest is the request of the GetClusterConfig method.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfig(betterproto.Message):
+    """
+    ClusterConfig is the Cluster-wide configuration. It is a singleton resource
+     that sets the defaults and the global options that apply to the entire
+     Cluster (e.g. the Session and Device defaults, the Cluster-wide Policies,
+     the DNS and the Authenticator/MFA options).
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `ClusterConfig`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "ClusterConfigSpec" = betterproto.message_field(4)
+    """Spec is the ClusterConfig specification."""
+
     status: "ClusterConfigStatus" = betterproto.message_field(5)
+    """Status is the current status of the ClusterConfig."""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpec(betterproto.Message):
+    """Spec is the ClusterConfig specification"""
+
     authorization: "ClusterConfigSpecAuthorization" = betterproto.message_field(1)
+    """Authorization sets the Cluster-wide authorization configuration"""
+
     ingress: "ClusterConfigSpecIngress" = betterproto.message_field(2)
     """Ingress sets Ingress specific-options."""
 
@@ -4093,11 +10873,16 @@ class ClusterConfigSpec(betterproto.Message):
     """DNS sets the private Cluster's DNS service specific options."""
 
     authenticator: "ClusterConfigSpecAuthenticator" = betterproto.message_field(7)
+    """Authenticator sets the Authenticator/MFA specific options."""
+
     authentication: "ClusterConfigSpecAuthentication" = betterproto.message_field(8)
+    """Authentication sets the authentication process specific options."""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecIngress(betterproto.Message):
+    """Ingress sets the options of the Cluster's internet-facing Ingress"""
+
     use_forwarded_for_header: bool = betterproto.bool_field(1)
     """
     UseForwardedForHeader enables the usage of the X-Forwarded-For header
@@ -4105,10 +10890,16 @@ class ClusterConfigSpecIngress(betterproto.Message):
     """
 
     xff_num_trusted_hops: int = betterproto.int32_field(2)
+    """
+    XFFNumTrustedHops is the number of the trusted hops used to pick the
+     downstream's public IP address out of the X-Forwarded-For header.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecSession(betterproto.Message):
+    """Session sets the Cluster-wide defaults of the Sessions"""
+
     human: "ClusterConfigSpecSessionHuman" = betterproto.message_field(1)
     """Human sets Session options for HUMAN Users"""
 
@@ -4118,6 +10909,8 @@ class ClusterConfigSpecSession(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecSessionHuman(betterproto.Message):
+    """Human sets the Session defaults of the HUMAN Users"""
+
     client_duration: "__meta_v1__.Duration" = betterproto.message_field(1)
     """
     ClientDuration sets the Session duration used by clients after which
@@ -4139,7 +10932,7 @@ class ClusterConfigSpecSessionHuman(betterproto.Message):
     """RefreshTokenDuration sets the refresh token duration"""
 
     max_per_user: int = betterproto.uint32_field(5)
-    """MaxPerUser sets the max number of of Sessions per User"""
+    """MaxPerUser sets the max number of Sessions per User"""
 
     default_state: "SessionSpecState" = betterproto.enum_field(6)
     """DefaultState is the default state of a newly created Session"""
@@ -4147,6 +10940,8 @@ class ClusterConfigSpecSessionHuman(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecSessionWorkload(betterproto.Message):
+    """Workload sets the Session defaults of the WORKLOAD Users"""
+
     client_duration: "__meta_v1__.Duration" = betterproto.message_field(1)
     """
     ClientDuration sets the Session duration used by clients after which
@@ -4168,7 +10963,7 @@ class ClusterConfigSpecSessionWorkload(betterproto.Message):
     """RefreshTokenDuration sets the refresh token duration"""
 
     max_per_user: int = betterproto.uint32_field(5)
-    """MaxPerUser sets the max number of of Sessions per User"""
+    """MaxPerUser sets the max number of Sessions per User"""
 
     default_state: "SessionSpecState" = betterproto.enum_field(6)
     """DefaultState is the default state of a newly created Session"""
@@ -4176,6 +10971,8 @@ class ClusterConfigSpecSessionWorkload(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecDevice(betterproto.Message):
+    """Device sets the Cluster-wide defaults of the Devices"""
+
     human: "ClusterConfigSpecDeviceHuman" = betterproto.message_field(1)
     """Human sets Device options for HUMAN Users"""
 
@@ -4185,24 +10982,30 @@ class ClusterConfigSpecDevice(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecDeviceHuman(betterproto.Message):
+    """Human sets the Device defaults of the HUMAN Users"""
+
     default_state: "DeviceSpecState" = betterproto.enum_field(1)
     """DefaultState is the default state of a newly registered Device"""
 
     max_per_user: int = betterproto.uint32_field(2)
-    """MaxPerUser sets the max number of of Devices per User"""
+    """MaxPerUser sets the max number of Devices per User"""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecDeviceWorkload(betterproto.Message):
+    """Workload sets the Device defaults of the WORKLOAD Users"""
+
     default_state: "DeviceSpecState" = betterproto.enum_field(1)
     """DefaultState is the default state of a newly registered Device"""
 
     max_per_user: int = betterproto.uint32_field(2)
-    """MaxPerUser sets the max number of of Devices per User"""
+    """MaxPerUser sets the max number of Devices per User"""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecGateway(betterproto.Message):
+    """Gateway sets the Cluster-wide options of the Gateways"""
+
     wireguard_key_rotation_duration: "__meta_v1__.Duration" = betterproto.message_field(
         1
     )
@@ -4214,17 +11017,36 @@ class ClusterConfigSpecGateway(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecDns(betterproto.Message):
+    """DNS sets the options of the Cluster's private DNS service"""
+
     fallback_zone: "ClusterConfigSpecDnsZone" = betterproto.message_field(1)
+    """
+    FallbackZone sets the zone that resolves the names that are not served
+     by the Cluster itself
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecDnsZone(betterproto.Message):
+    """Zone sets the options of a DNS zone"""
+
     servers: List[str] = betterproto.string_field(1)
+    """Servers is the list of the upstream DNS servers of the zone"""
+
     cache_duration: "__meta_v1__.Duration" = betterproto.message_field(2)
+    """
+    CacheDuration is the duration for which the zone's answers are
+     cached
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthorization(betterproto.Message):
+    """
+    Authorization sets the Cluster-wide Policies that are applied to every
+     request
+    """
+
     policies: List[str] = betterproto.string_field(1)
     """Policies is the list of standalone Policies"""
 
@@ -4234,34 +11056,82 @@ class ClusterConfigSpecAuthorization(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthenticator(betterproto.Message):
+    """
+    Authenticator sets the Cluster-wide options of the Authenticators and
+     MFA
+    """
+
     registration_enforcement_rules: List[
         "ClusterConfigSpecAuthenticatorEnforcementRule"
     ] = betterproto.message_field(1)
+    """
+    RegistrationEnforcementRules is the list of the rules that decide
+     whether registering an Authenticator is enforced
+    """
+
     authentication_enforcement_rules: List[
         "ClusterConfigSpecAuthenticatorEnforcementRule"
     ] = betterproto.message_field(2)
+    """
+    AuthenticationEnforcementRules is the list of the rules that decide
+     whether authenticating via an Authenticator is enforced as MFA right
+     after a successful IdentityProvider authentication
+    """
+
     post_authentication_rules: List["ClusterConfigSpecAuthenticatorRule"] = (
         betterproto.message_field(3)
     )
+    """
+    PostAuthenticationRules is the list of the rules that decide whether
+     an otherwise successful Authenticator authentication is eventually
+     accepted or rejected
+    """
+
     enable_passkey_login: bool = betterproto.bool_field(4)
+    """
+    EnablePasskeyLogin enables logging in directly with a Passkey. Once
+     enabled, any registered FIDO Authenticator that supports resident key
+     credentials can be used for a Passkey login.
+    """
+
     default_state: "AuthenticatorSpecState" = betterproto.enum_field(5)
+    """
+    DefaultState is the default state of a newly registered Authenticator
+    """
+
     fido: "ClusterConfigSpecAuthenticatorFido" = betterproto.message_field(6)
+    """FIDO sets the options of the FIDO/WebAuthn Authenticators"""
+
+    tpm: "ClusterConfigSpecAuthenticatorTpm" = betterproto.message_field(7)
+    """TPM sets the options of the TPM 2.0 Authenticators"""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthenticatorEnforcementRule(betterproto.Message):
+    """
+    EnforcementRule decides whether the Authenticator registration or
+     authentication is enforced, recommended or ignored
+    """
+
     condition: "Condition" = betterproto.message_field(1)
+    """Condition is the rule's Condition"""
+
     effect: "ClusterConfigSpecAuthenticatorEnforcementRuleEffect" = (
         betterproto.enum_field(2)
     )
     """
-    Effect is the effect of the policy when a match happens to any of the
+    Effect is the effect of the rule when a match happens to any of the
      Conditions.
     """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthenticatorRule(betterproto.Message):
+    """
+    Rule decides whether an otherwise successful Authenticator
+     authentication is eventually accepted or rejected
+    """
+
     name: str = betterproto.string_field(1)
     """
     Name is an optional name for the rule. It is currently useful in Logs
@@ -4283,20 +11153,93 @@ class ClusterConfigSpecAuthenticatorRule(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthenticatorFido(betterproto.Message):
+    """FIDO sets the options of the FIDO/WebAuthn Authenticators"""
+
     attestation_conveyance_preference: (
         "ClusterConfigSpecAuthenticatorFidoAttestationConveyancePreference"
     ) = betterproto.enum_field(1)
+    """
+    AttestationConveyancePreference is the WebAuthn attestation
+     conveyance preference used during the registration
+    """
+
+    user_verification: "ClusterConfigSpecAuthenticatorFidoUserVerification" = (
+        betterproto.enum_field(2)
+    )
+    """
+    UserVerification is the WebAuthn User verification requirement that
+     is used during the registration as well as the authentication of the
+     FIDO Authenticators that are used as second factors
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticatorTpm(betterproto.Message):
+    """TPM sets the options of the TPM 2.0 Authenticators"""
+
+    endorsement_trust: "ClusterConfigSpecAuthenticatorTpmEndorsementTrust" = (
+        betterproto.message_field(1)
+    )
+    """
+    EndorsementTrust controls the verification of the endorsement key
+     certificates
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticatorTpmEndorsementTrust(betterproto.Message):
+    """
+    EndorsementTrust controls how the endorsement key certificate
+     presented by a TPM is verified upon registering an Authenticator
+    """
+
+    mode: "ClusterConfigSpecAuthenticatorTpmEndorsementTrustMode" = (
+        betterproto.enum_field(1)
+    )
+    """Mode is the endorsement key certificate verification mode"""
+
+    trusted_c_as: List[str] = betterproto.string_field(2)
+    """
+    TrustedCAs is the list of the PEM-encoded root certificate
+     authorities of the TPM manufacturers that are trusted to issue
+     endorsement key certificates. Each entry must contain exactly one
+     certificate.
+    """
+
+    intermediate_c_as: List[str] = betterproto.string_field(3)
+    """
+    IntermediateCAs is the list of the PEM-encoded intermediate
+     certificate authorities that are used to build the certification
+     path from an endorsement key certificate to a trustedCA. They are
+     never trusted on their own. Each entry must contain exactly one
+     certificate.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthentication(betterproto.Message):
+    """
+    Authentication sets the Cluster-wide options of the authentication
+     process
+    """
+
     geolocation: "ClusterConfigSpecAuthenticationGeolocation" = (
         betterproto.message_field(1)
     )
+    """
+    Geolocation sets the geolocation resolution of the authenticating
+     clients
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthenticationGeolocation(betterproto.Message):
+    """
+    Geolocation sets the geolocation resolution of the authenticating
+     clients. Once enabled, the resolved GeoIP information is set in the
+     Session on each authentication and it can be used in the Policies.
+    """
+
     mmdb: "ClusterConfigSpecAuthenticationGeolocationMmdb" = betterproto.message_field(
         1, group="type"
     )
@@ -4304,27 +11247,196 @@ class ClusterConfigSpecAuthenticationGeolocation(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthenticationGeolocationMmdb(betterproto.Message):
+    """
+    MMDB resolves the geolocation from MaxMind MMDB databases (the
+     `enterprise`, `city` and `country` database types are supported)
+    """
+
     from_config: str = betterproto.string_field(1, group="type")
+    """
+    FromConfig sets the name of the Config whose data contains the
+     MMDB database
+    """
+
     upstream: "ClusterConfigSpecAuthenticationGeolocationMmdbUpstream" = (
         betterproto.message_field(2, group="type")
     )
+    """Upstream fetches the MMDB database from a URL"""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecAuthenticationGeolocationMmdbUpstream(betterproto.Message):
+    """Upstream fetches the MMDB database from a URL"""
+
     url: str = betterproto.string_field(1)
+    """URL is the URL from which the MMDB database is fetched"""
+
+    auth: "ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuth" = (
+        betterproto.message_field(2)
+    )
+    """Auth sets the credentials used to fetch the MMDB database"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuth(betterproto.Message):
+    """Auth sets the credentials used to fetch the MMDB database"""
+
+    bearer: "ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthBearer" = (
+        betterproto.message_field(1, group="type")
+    )
+    """Bearer sets bearer authentication details"""
+
+    basic: "ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthBasic" = (
+        betterproto.message_field(2, group="type")
+    )
+    """Basic sets basic authentication details"""
+
+    custom: "ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthCustom" = (
+        betterproto.message_field(3, group="type")
+    )
+    """Custom sets authentication inside custom header"""
+
+    query: "ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthQuery" = (
+        betterproto.message_field(4, group="type")
+    )
+    """Query sets authentication inside a URL query parameter"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthBearer(
+    betterproto.Message
+):
+    """
+    Bearer is the bearer token that is set in the `Authorization`
+     request header
+    """
+
+    from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value
+     contains the bearer token
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthBasic(
+    betterproto.Message
+):
+    """Basic is the HTTP basic authentication credentials"""
+
+    username: str = betterproto.string_field(1)
+    """Username is the username value of HTTP basic authentication"""
+
+    password: (
+        "ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthBasicPassword"
+    ) = betterproto.message_field(2)
+    """Password is the password value of HTTP basic authentication"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthBasicPassword(
+    betterproto.Message
+):
+    """Password is the password value of HTTP basic authentication"""
+
+    from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value
+     contains the Password
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthCustom(
+    betterproto.Message
+):
+    """Custom is a credential that is set in a custom request header"""
+
+    header: str = betterproto.string_field(1)
+    """Header is the name of the HTTP header (e.g. "X-Custom-Auth")"""
+
+    value: "ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthCustomValue" = (
+        betterproto.message_field(2)
+    )
+    """Value is the value of the header"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthCustomValue(
+    betterproto.Message
+):
+    """Value is the value of the custom request header"""
+
+    from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value
+     contains the header's Value
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthQuery(
+    betterproto.Message
+):
+    """Query is a credential that is set in a URL query parameter"""
+
+    key: str = betterproto.string_field(1)
+    """Key is the name of the query parameter"""
+
+    value: "ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthQueryValue" = (
+        betterproto.message_field(2)
+    )
+    """Value is the value of the query parameter"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecAuthenticationGeolocationMmdbUpstreamAuthQueryValue(
+    betterproto.Message
+):
+    """Value is the value of the query parameter"""
+
+    from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret sets the name of the Secret whose value
+     contains the query parameter's Value
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatus(betterproto.Message):
+    """Status is the current status of the ClusterConfig"""
+
     domain: str = betterproto.string_field(1)
+    """Domain is the Cluster's domain (e.g. "example.com")"""
+
     network: "ClusterConfigStatusNetwork" = betterproto.message_field(2)
+    """
+    Network is the actual network ranges that were allocated by the Cluster
+    """
+
     network_config: "ClusterConfigStatusNetworkConfig" = betterproto.message_field(3)
+    """NetworkConfig is the Cluster's networking configuration"""
+
     secret_manager: "ClusterConfigStatusSecretManager" = betterproto.message_field(4)
+    """
+    SecretManager is the external secret manager used by the Cluster, if any
+    """
+
+    device: "ClusterConfigStatusDevice" = betterproto.message_field(5)
+    """Device is the Cluster-wide Device configuration"""
+
+    installation: "ClusterConfigStatusInstallation" = betterproto.message_field(6)
+    """
+    Installation is the set of installation-time options that were supplied
+     via the Cluster bootstrap configuration upon the Cluster installation or
+     the latest upgrade.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatusNetworkConfig(betterproto.Message):
+    """NetworkConfig is the Cluster's networking configuration"""
+
     mode: "ClusterConfigStatusNetworkConfigMode" = betterproto.enum_field(1)
     """
     Mode sets the networking mode (DualStack, IPv4Only or IPv6Only) for
@@ -4349,15 +11461,31 @@ class ClusterConfigStatusNetworkConfig(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatusNetworkConfigV4(betterproto.Message):
+    """V4 is the IPv4 Network configuration"""
+
     cluster_network: str = betterproto.string_field(1)
     """
     ClusterNetwork is the Cluster network range. Currently
      `100.64.0.0/10` is used by default.
     """
 
+    gateway_bits: int = betterproto.uint32_field(2)
+    """
+    GatewayBits is the number of the bits of the ClusterNetwork that are
+     allocated to address the Gateways.
+    """
+
+    region_bits: int = betterproto.uint32_field(3)
+    """
+    RegionBits is the number of the bits of the ClusterNetwork that are
+     allocated to address the Regions.
+    """
+
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatusNetworkConfigV6(betterproto.Message):
+    """V6 is the IPv6 Network configuration"""
+
     cluster_network: str = betterproto.string_field(1)
     """
     ClusterNetwork is the Cluster network range. Currently not enforced
@@ -4367,6 +11495,8 @@ class ClusterConfigStatusNetworkConfigV6(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatusNetworkConfigWireguard(betterproto.Message):
+    """Wireguard is the WireGuard-specific configuration"""
+
     gateway_port: int = betterproto.uint32_field(1)
     """GatewayPort sets the Gateway port. By default it is set to 53820"""
 
@@ -4378,6 +11508,8 @@ class ClusterConfigStatusNetworkConfigWireguard(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatusNetworkConfigQuicv0(betterproto.Message):
+    """QUICV0 is the QUICv0-specific configuration"""
+
     enable: bool = betterproto.bool_field(1)
     """Enable enables QUICv0 gateways. By default this mode is not enabled."""
 
@@ -4392,26 +11524,260 @@ class ClusterConfigStatusNetworkConfigQuicv0(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatusNetwork(betterproto.Message):
+    """
+    Network is the actual network ranges that were allocated by the Cluster
+    """
+
     cluster_network: "__meta_v1__.DualStackNetwork" = betterproto.message_field(1)
+    """ClusterNetwork is the dual-stack network range of the entire Cluster"""
+
     wg_conn_subnet: "__meta_v1__.DualStackNetwork" = betterproto.message_field(2)
+    """
+    WGConnSubnet is the dual-stack subnet from which the addresses of the
+     WireGuard-based connections are allocated
+    """
+
     v6_range_prefix: bytes = betterproto.bytes_field(3)
+    """V6RangePrefix is the prefix of the Cluster's IPv6 range"""
+
     service_subnet: "__meta_v1__.DualStackNetwork" = betterproto.message_field(4)
+    """
+    ServiceSubnet is the dual-stack subnet from which the private
+     addresses of the Services are allocated
+    """
+
     quic_conn_subnet: "__meta_v1__.DualStackNetwork" = betterproto.message_field(5)
+    """
+    QUICConnSubnet is the dual-stack subnet from which the addresses of
+     the QUICv0-based connections are allocated
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatusSecretManager(betterproto.Message):
+    """
+    SecretManager is the external secret manager that intercepts the Secret
+     operations in order to store the Secrets according to the operator's own
+     requirements
+    """
+
     address: str = betterproto.string_field(1)
+    """Address is the address of the secret manager's gRPC server"""
+
     tls: "ClusterConfigStatusSecretManagerTls" = betterproto.message_field(2)
+    """TLS sets the TLS-related configuration"""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatusSecretManagerTls(betterproto.Message):
+    """
+    TLS sets the TLS-related configuration used to connect to the secret
+     manager
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
+class ClusterConfigStatusDevice(betterproto.Message):
+    """Device is the Cluster-wide Device configuration"""
+
+    probes: List["ClusterConfigStatusDeviceProbe"] = betterproto.message_field(1)
+    """Probes is the list of the Probes that are run on the Devices"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusDeviceProbe(betterproto.Message):
+    """
+    Probe is a check that is run on the Devices in order to collect the
+     information used to bind them to their DeviceManagers
+    """
+
+    owner_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """OwnerRef is the reference of the DeviceManager that owns the Probe"""
+
+    os_type: "DeviceStatusOsType" = betterproto.enum_field(2)
+    """
+    OSType restricts the Probe to the Devices running a specific
+     operating system
+    """
+
+    require_elevation: bool = betterproto.bool_field(3)
+    """
+    RequireElevation requires the Probe to be run with elevated
+     privileges
+    """
+
+    condition: "Condition" = betterproto.message_field(4)
+    """Condition decides whether the Probe is run on a given Device"""
+
+    run_command: "ClusterConfigStatusDeviceProbeRunCommand" = betterproto.message_field(
+        5, group="type"
+    )
+    """RunCommand runs a command on the Device"""
+
+    read_file: "ClusterConfigStatusDeviceProbeReadFile" = betterproto.message_field(
+        6, group="type"
+    )
+    """ReadFile reads a file from the Device"""
+
+    read_registry: "ClusterConfigStatusDeviceProbeReadRegistry" = (
+        betterproto.message_field(7, group="type")
+    )
+    """ReadRegistry reads a value from the Device's Windows registry"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusDeviceProbeRunCommand(betterproto.Message):
+    """RunCommand runs a command on the Device and collects its output"""
+
+    command: str = betterproto.string_field(1)
+    """Command is the command to be run"""
+
+    args: List[str] = betterproto.string_field(2)
+    """Args is the list of the command's arguments"""
+
+    timeout_seconds: int = betterproto.uint32_field(3)
+    """
+    TimeoutSeconds is the number of seconds after which running the
+     command times out
+    """
+
+    max_output_bytes: int = betterproto.uint32_field(4)
+    """
+    MaxOutputBytes is the maximum size in bytes of the collected
+     output
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusDeviceProbeReadFile(betterproto.Message):
+    """ReadFile reads a file from the Device"""
+
+    path: str = betterproto.string_field(1)
+    """Path is the path of the file to be read"""
+
+    max_bytes: int = betterproto.uint32_field(2)
+    """MaxBytes is the maximum size in bytes that is read from the file"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusDeviceProbeReadRegistry(betterproto.Message):
+    """ReadRegistry reads a value from the Windows registry of the Device"""
+
+    key: str = betterproto.string_field(1)
+    """Key is the registry key to be read"""
+
+    name: str = betterproto.string_field(2)
+    """Name is the name of the registry value to be read"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusInstallation(betterproto.Message):
+    """
+    Installation contains the installation-time options that were supplied
+     via the Cluster bootstrap configuration and that are remembered by the
+     Cluster so that they do not have to be re-supplied on every upgrade.
+    """
+
+    spiffe: "ClusterConfigStatusInstallationSpiffe" = betterproto.message_field(1)
+    """SPIFFE sets the SPIFFE/SPIRE-specific configuration."""
+
+    cni: "ClusterConfigStatusInstallationCni" = betterproto.message_field(2)
+    """CNI sets the Kubernetes cluster CNI-specific configuration."""
+
+    ingress: "ClusterConfigStatusInstallationIngress" = betterproto.message_field(3)
+    """Ingress sets the Cluster Ingress-specific configuration."""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusInstallationSpiffe(betterproto.Message):
+    """SPIFFE is the SPIFFE/SPIRE-specific installation options"""
+
+    enable: bool = betterproto.bool_field(1)
+    """
+    Enable enables the SPIFFE mode where the Cluster components
+     authenticate to each other using X.509 SVIDs that are obtained from
+     the SPIRE Agent Workload API instead of the Cluster's own internal
+     credentials.
+    """
+
+    trust_domain: str = betterproto.string_field(2)
+    """
+    TrustDomain is the SPIFFE trust domain (e.g. `example.com`) that the
+     Cluster components' SVIDs must belong to. If it is not set, the
+     Cluster adopts the trust domain of the SVID that is served by the
+     SPIRE Agent itself.
+    """
+
+    csi_driver: "ClusterConfigStatusInstallationSpiffeCsiDriver" = (
+        betterproto.message_field(3)
+    )
+    """CSIDriver sets the SPIFFE CSI driver-specific configuration."""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusInstallationSpiffeCsiDriver(betterproto.Message):
+    """CSIDriver is the SPIFFE CSI driver-specific options"""
+
+    name: str = betterproto.string_field(1)
+    """
+    Name is the name of the SPIFFE CSI driver that is used to mount
+     the SPIRE Agent Workload API socket inside the Cluster components'
+     Pods. By default it is set to `csi.spiffe.io`.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusInstallationCni(betterproto.Message):
+    """CNI is the Kubernetes cluster CNI-specific installation options"""
+
+    conf_dir: str = betterproto.string_field(1, group="confDirType")
+    """
+    ConfDir is the host path of the Kubernetes cluster's CNI
+     configuration directory (e.g. `/var/lib/rancher/k3s/agent/etc/cni`
+     for k3s clusters). The Multus delegate CNI configuration directory
+     is derived from it as `<confDir>/multus/net.d`.
+    """
+
+    multus_conf_dir: str = betterproto.string_field(2, group="confDirType")
+    """
+    MultusConfDir directly sets the host path of the Multus delegate
+     CNI configuration directory (i.e. Multus's own `confDir`).
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusInstallationIngress(betterproto.Message):
+    """Ingress is the Cluster Ingress-specific installation options"""
+
+    front_proxy: "ClusterConfigStatusInstallationIngressFrontProxy" = (
+        betterproto.message_field(1)
+    )
+    """FrontProxy sets the front proxy mode-specific configuration."""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusInstallationIngressFrontProxy(betterproto.Message):
+    """FrontProxy is the front proxy mode-specific options"""
+
+    enable: bool = betterproto.bool_field(1)
+    """
+    Enable enables the front proxy mode where the Cluster's Ingress
+     sits behind an external L7 proxy/load balancer that terminates
+     TLS.
+    """
+
+
+@dataclass(eq=False, repr=False)
 class RequestContext(betterproto.Message):
+    """
+    RequestContext is the context of a single request that is evaluated by the
+     policy-as-code Conditions. It is exposed to the CEL expressions and the OPA
+     Rego scripts as the `ctx` object (e.g. `ctx.user.spec.groups`,
+     `ctx.request.http.path`).
+    """
+
     request: "RequestContextRequest" = betterproto.message_field(1)
     """Request is the request details."""
 
@@ -4436,23 +11802,47 @@ class RequestContext(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequest(betterproto.Message):
+    """Request is the details of the request itself"""
+
     http: "RequestContextRequestHttp" = betterproto.message_field(1, group="Type")
     """HTTP is the HTTP specific details."""
 
     ssh: "RequestContextRequestSsh" = betterproto.message_field(2, group="Type")
+    """SSH is the SSH specific details."""
+
     kubernetes: "RequestContextRequestKubernetes" = betterproto.message_field(
         3, group="Type"
     )
+    """Kubernetes is the Kubernetes specific details."""
+
     grpc: "RequestContextRequestGrpc" = betterproto.message_field(4, group="Type")
+    """GRPC is the gRPC specific details."""
+
     postgres: "RequestContextRequestPostgres" = betterproto.message_field(
         5, group="Type"
     )
+    """Postgres is the PostgreSQL specific details."""
+
     dns: "RequestContextRequestDns" = betterproto.message_field(6, group="Type")
+    """DNS is the DNS specific details."""
+
+    socks5: "RequestContextRequestSocks5" = betterproto.message_field(8, group="Type")
+    """SOCKS5 is the SOCKS5 specific details."""
+
+    mcp: "RequestContextRequestMcp" = betterproto.message_field(9, group="Type")
+    """MCP is the Model Context Protocol specific details."""
+
+    llm: "RequestContextRequestLlm" = betterproto.message_field(10, group="Type")
+    """LLM is the LLM gateway specific details."""
+
     ip: str = betterproto.string_field(7)
+    """IP is the IP address of the downstream that issued the request"""
 
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestHttp(betterproto.Message):
+    """HTTP is the HTTP-specific request details"""
+
     headers: Dict[str, str] = betterproto.map_field(
         1, betterproto.TYPE_STRING, betterproto.TYPE_STRING
     )
@@ -4500,6 +11890,8 @@ class RequestContextRequestHttp(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestSsh(betterproto.Message):
+    """SSH is the SSH-specific request details"""
+
     connect: "RequestContextRequestSshConnect" = betterproto.message_field(
         1, group="type"
     )
@@ -4507,70 +11899,344 @@ class RequestContextRequestSsh(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestSshConnect(betterproto.Message):
+    """Connect is the details of the SSH connection request"""
+
     user: str = betterproto.string_field(1)
+    """User is the SSH user requested by the downstream"""
 
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestKubernetes(betterproto.Message):
+    """Kubernetes is the Kubernetes-specific request details"""
+
     http: "RequestContextRequestHttp" = betterproto.message_field(1)
+    """HTTP is the underlying HTTP request details"""
+
     verb: str = betterproto.string_field(2)
+    """Verb is the Kubernetes API verb (e.g. "get", "list", "create")"""
+
     api_prefix: str = betterproto.string_field(3)
+    """APIPrefix is the Kubernetes API path prefix (i.e. "api" or "apis")"""
+
     api_group: str = betterproto.string_field(4)
+    """APIGroup is the Kubernetes API group (e.g. "apps")"""
+
     api_version: str = betterproto.string_field(5)
+    """APIVersion is the Kubernetes API version (e.g. "v1")"""
+
     namespace: str = betterproto.string_field(6)
+    """Namespace is the Kubernetes namespace of the requested resource"""
+
     resource: str = betterproto.string_field(7)
+    """Resource is the requested Kubernetes resource (e.g. "pods")"""
+
     subresource: str = betterproto.string_field(8)
+    """
+    Subresource is the requested subresource of the resource (e.g. "log",
+     "exec")
+    """
+
     name: str = betterproto.string_field(9)
+    """Name is the name of the requested Kubernetes resource"""
 
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestGrpc(betterproto.Message):
+    """GRPC is the gRPC-specific request details"""
+
     http: "RequestContextRequestHttp" = betterproto.message_field(1)
+    """HTTP is the underlying HTTP request details"""
+
     method: str = betterproto.string_field(2)
+    """Method is the name of the gRPC method"""
+
     service: str = betterproto.string_field(3)
+    """Service is the name of the gRPC service"""
+
     service_full_name: str = betterproto.string_field(4)
+    """
+    ServiceFullName is the fully qualified name of the gRPC service (i.e.
+     the package and the service name)
+    """
+
     package: str = betterproto.string_field(5)
+    """Package is the name of the gRPC package"""
 
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestPostgres(betterproto.Message):
+    """Postgres is the PostgreSQL-specific request details"""
+
     connect: "RequestContextRequestPostgresConnect" = betterproto.message_field(
         1, group="type"
     )
+    """Connect is the details of the connection request"""
+
     query: "RequestContextRequestPostgresQuery" = betterproto.message_field(
         2, group="type"
     )
+    """Query is the details of a simple query request"""
+
     parse: "RequestContextRequestPostgresParse" = betterproto.message_field(
         3, group="type"
     )
+    """Parse is the details of a parse request"""
 
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestPostgresConnect(betterproto.Message):
+    """Connect is the details of the PostgreSQL connection request"""
+
     user: str = betterproto.string_field(1)
+    """User is the database user requested by the downstream"""
+
     database: str = betterproto.string_field(2)
+    """Database is the database name requested by the downstream"""
+
     application_name: str = betterproto.string_field(3)
+    """ApplicationName is the application name reported by the downstream"""
 
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestPostgresQuery(betterproto.Message):
+    """Query is the details of a simple query request"""
+
     query: str = betterproto.string_field(1)
+    """Query is the SQL query itself"""
 
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestPostgresParse(betterproto.Message):
+    """Parse is the details of an extended query protocol parse request"""
+
     name: str = betterproto.string_field(1)
+    """Name is the name of the prepared statement"""
+
     query: str = betterproto.string_field(2)
+    """Query is the SQL query itself"""
 
 
 @dataclass(eq=False, repr=False)
 class RequestContextRequestDns(betterproto.Message):
+    """DNS is the DNS-specific request details"""
+
     name: str = betterproto.string_field(1)
+    """Name is the queried domain name"""
+
     type_id: int = betterproto.int32_field(2)
+    """TypeID is the numeric DNS query type (e.g. 1 for `A`, 28 for `AAAA`)"""
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestSocks5(betterproto.Message):
+    """SOCKS5 is the SOCKS5-specific request details"""
+
+    connect: "RequestContextRequestSocks5Connect" = betterproto.message_field(
+        1, group="type"
+    )
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestSocks5Connect(betterproto.Message):
+    """Connect is the details of the SOCKS5 connection request"""
+
+    host: str = betterproto.string_field(1)
+    """Host is the requested destination host"""
+
+    port: int = betterproto.uint32_field(2)
+    """Port is the requested destination port"""
+
+    address_type: "RequestContextRequestSocks5ConnectAddressType" = (
+        betterproto.enum_field(3)
+    )
+    """AddressType is the type of the requested destination address"""
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestMcp(betterproto.Message):
+    """MCP is the Model Context Protocol-specific request details"""
+
+    http: "RequestContextRequestHttp" = betterproto.message_field(1)
+    """
+    HTTP is the underlying HTTP request details. The entire JSON-RPC
+     request body is available at `ctx.request.mcp.http.bodyMap` which is
+     used to access the tool arguments (i.e.
+     `ctx.request.mcp.http.bodyMap.params.arguments`) as well as any other
+     field that is not normalized here.
+    """
+
+    protocol_version: str = betterproto.string_field(2)
+    """
+    ProtocolVersion is the MCP protocol version declared by the request
+     (e.g. "2026-07-28"). It is read from the request body's
+     `io.modelcontextprotocol/protocolVersion` metadata field or from the
+     `MCP-Protocol-Version` request header, and it is only set once both
+     values are validated to match whenever both of them are present. It is
+     empty for the protocol revisions that do not declare a version.
+    """
+
+    method: str = betterproto.string_field(3)
+    """
+    Method is the JSON-RPC method of the request body (e.g. `tools/call`,
+     `resources/read`, `server/discover`).
+    """
+
+    name: str = betterproto.string_field(4)
+    """
+    Name is the logical MCP target of the method whenever it has one. It
+     is the tool name for `tools/call`, the prompt name for `prompts/get`
+     and the resource URI for `resources/read`. It is empty for the methods
+     that have no target such as the `*/list` methods.
+    """
+
+    request_id: str = betterproto.string_field(5)
+    """
+    RequestID is the JSON-RPC request `id` normalized into a string. It is
+     controlled by the downstream and therefore it must never be used as a
+     security identifier.
+    """
+
+    is_notification: bool = betterproto.bool_field(6)
+    """
+    IsNotification is set for JSON-RPC notifications (i.e. request bodies
+     that carry no `id` and expect no response).
+    """
+
+    client: "RequestContextRequestMcpClient" = betterproto.message_field(7)
+    """
+    Client is the client information reported by the downstream itself. It
+     is useful for auditing and debugging and it is NOT an identity. Use
+     the authenticated User, Session, Device and Groups for access control.
+    """
+
+    capabilities: List[str] = betterproto.string_field(8)
+    """
+    Capabilities is the list of the capability identifiers declared by the
+     downstream for this request (e.g. "elicitation"). It is self-reported.
+    """
+
+    session_id: str = betterproto.string_field(9)
+    """
+    SessionID is the value of the `Mcp-Session-Id` request header used by
+     the protocol revisions between 2025-03-26 and 2025-11-25. It is an MCP
+     transport identifier that is unrelated to the Octelium Session.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestMcpClient(betterproto.Message):
+    """Client is the client information reported by the downstream itself"""
+
+    name: str = betterproto.string_field(1)
+    """Name is the name reported by the downstream client itself"""
+
+    version: str = betterproto.string_field(2)
+    """Version is the version reported by the downstream client itself"""
+
+    title: str = betterproto.string_field(3)
+    """
+    Title is the human-readable title reported by the downstream client
+     itself
+    """
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestLlm(betterproto.Message):
+    """LLM is the LLM-gateway-specific request details"""
+
+    http: "RequestContextRequestHttp" = betterproto.message_field(1)
+    """
+    HTTP is the underlying HTTP request details. The entire request body
+     is available at `ctx.request.llm.http.bodyMap` which is used to access
+     the messages (i.e. `ctx.request.llm.http.bodyMap.messages`) as well as
+     any other field that is not normalized here.
+    """
+
+    protocol: "ServiceSpecConfigLlmProtocol" = betterproto.enum_field(2)
+    """Protocol is the inference API protocol of the request."""
+
+    operation: "ServiceSpecConfigLlmOperation" = betterproto.enum_field(3)
+    """
+    Operation is the inference operation of the request, normalized across
+     the protocols (e.g. `GENERATE`, `EMBED`). It is what a rule reads in
+     order to decide from what the request does rather than from the route
+     that it arrived on, which keeps the rule working for a Service of
+     another protocol. Read the Route field alongside it wherever two
+     routes of the same protocol have to be told apart.
+    """
+
+    model: str = betterproto.string_field(4)
+    """
+    Model is the model name requested by the downstream, verbatim. It is
+     empty for the operations that carry no model (e.g. `MODELS_LIST`).
+    """
+
+    stream: bool = betterproto.bool_field(5)
+    """Stream is set for the requests that ask for a streamed response."""
+
+    estimated_input_tokens: int = betterproto.uint64_field(6)
+    """
+    EstimatedInputTokens is Octelium's own byte-based pre-flight input
+     token estimate. It is neither a provider-accurate token count nor an
+     upper bound of one and it must never be treated as a billing truth.
+     Read the EstimateQuality field alongside it.
+    """
+
+    estimate_quality: "RequestContextRequestLlmEstimateQuality" = (
+        betterproto.enum_field(7)
+    )
+    """
+    EstimateQuality shows whether the EstimatedInputTokens field accounted
+     for the entire input of the request.
+    """
+
+    max_output_tokens: int = betterproto.uint64_field(8)
+    """
+    MaxOutputTokens is the maximum output token count requested by the
+     downstream itself. It is zero whenever the request declares none.
+    """
+
+    has_tools: bool = betterproto.bool_field(9)
+    """HasTools is set for the requests that declare tools."""
+
+    tool_count: int = betterproto.uint32_field(10)
+    """ToolCount is the number of the tools declared by the request."""
+
+    tool_names: List[str] = betterproto.string_field(11)
+    """
+    ToolNames is the bounded list of the names of the tools declared by
+     the request.
+    """
+
+    input_item_count: int = betterproto.uint32_field(12)
+    """
+    InputItemCount is the number of the input items (i.e. the messages or
+     the embedding inputs) of the request.
+    """
+
+    has_image_input: bool = betterproto.bool_field(13)
+    """HasImageInput is set for the requests that carry image input."""
+
+    has_audio_input: bool = betterproto.bool_field(14)
+    """HasAudioInput is set for the requests that carry audio input."""
+
+    route: "RequestContextRequestLlmRoute" = betterproto.enum_field(15)
+    """
+    Route is the canonical inference API route of the request (e.g.
+     `CHAT_COMPLETIONS`, `MESSAGES`). It is derived from the canonicalized
+     request path and method.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class PolicyTrigger(betterproto.Message):
+    """
+    PolicyTrigger dynamically attaches a set of Policies to the requests that
+     satisfy its PreCondition. It lets the Cluster apply Policies that are scoped
+     to specific principals or resources, and bounded in time, without having to
+     modify the resources themselves.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -4578,7 +12244,7 @@ class PolicyTrigger(betterproto.Message):
     """Kind is the resource name (i.e. `PolicyTrigger`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "PolicyTriggerSpec" = betterproto.message_field(4)
     """Spec is the PolicyTrigger specification."""
@@ -4589,13 +12255,26 @@ class PolicyTrigger(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class PolicyTriggerSpec(betterproto.Message):
+    """Spec is the PolicyTrigger specification"""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class PolicyTriggerStatus(betterproto.Message):
+    """Status is the current status of the PolicyTrigger"""
+
     owner_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    OwnerRef is the reference of the resource that owns the PolicyTrigger
+    """
+
     pre_condition: "PolicyTriggerStatusPreCondition" = betterproto.message_field(2)
+    """
+    PreCondition decides whether the PolicyTrigger's Policies are attached
+     to a request
+    """
+
     policies: List[str] = betterproto.string_field(3)
     """Policies is the list of standalone Policies"""
 
@@ -4603,38 +12282,102 @@ class PolicyTriggerStatus(betterproto.Message):
     """InlinePolicies is the list of inline Policies"""
 
     is_disabled: bool = betterproto.bool_field(5)
+    """IsDisabled disables the PolicyTrigger without having to delete it"""
 
 
 @dataclass(eq=False, repr=False)
 class PolicyTriggerStatusPreCondition(betterproto.Message):
+    """
+    PreCondition decides whether the PolicyTrigger's Policies are attached
+     to a request
+    """
+
     not_before: datetime = betterproto.message_field(1, group="type")
+    """
+    NotBefore matches the requests that happen at or after this
+     timestamp
+    """
+
     not_after: datetime = betterproto.message_field(2, group="type")
+    """
+    NotAfter matches the requests that happen at or before this
+     timestamp
+    """
+
     session_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
         3, group="type"
     )
+    """SessionRef matches the requests of a specific Session"""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(4, group="type")
+    """UserRef matches the requests of a specific User"""
+
     match_any: bool = betterproto.bool_field(5, group="type")
+    """MatchAny matches every request"""
+
     condition: "Condition" = betterproto.message_field(6, group="type")
+    """
+    Condition matches the requests that satisfy a policy-as-code
+     Condition
+    """
+
     any: "PolicyTriggerStatusPreConditionAny" = betterproto.message_field(
         7, group="type"
     )
+    """Any acts as a logical OR operator on its list of PreConditions"""
+
     all: "PolicyTriggerStatusPreConditionAll" = betterproto.message_field(
         8, group="type"
     )
+    """All acts as a logical AND operator on its list of PreConditions"""
+
+    service_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
+        9, group="type"
+    )
+    """ServiceRef matches the requests to a specific Service"""
+
+    namespace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
+        10, group="type"
+    )
+    """
+    NamespaceRef matches the requests to the Services of a specific
+     Namespace
+    """
+
+    group_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
+        11, group="type"
+    )
+    """
+    GroupRef matches the requests of the Users belonging to a specific
+     Group
+    """
+
+    device_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
+        12, group="type"
+    )
+    """DeviceRef matches the requests coming from a specific Device"""
 
 
 @dataclass(eq=False, repr=False)
 class PolicyTriggerStatusPreConditionAny(betterproto.Message):
+    """Any acts as a logical OR operator on its list of PreConditions"""
+
     of: List["PolicyTriggerStatusPreCondition"] = betterproto.message_field(1)
+    """Of is the list of the PreConditions of which at least one must match"""
 
 
 @dataclass(eq=False, repr=False)
 class PolicyTriggerStatusPreConditionAll(betterproto.Message):
+    """All acts as a logical AND operator on its list of PreConditions"""
+
     of: List["PolicyTriggerStatusPreCondition"] = betterproto.message_field(1)
+    """Of is the list of the PreConditions that must all match"""
 
 
 @dataclass(eq=False, repr=False)
 class PolicyTriggerList(betterproto.Message):
+    """PolicyTriggerList is the list of PolicyTriggers."""
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -4650,6 +12393,12 @@ class PolicyTriggerList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ComponentLog(betterproto.Message):
+    """
+    ComponentLog is a log entry that is emitted by one of the Cluster's own
+     components. It is used for the operational logging of the Cluster itself as
+     opposed to the AccessLogs which record the Users' access to the Services.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
@@ -4665,144 +12414,422 @@ class ComponentLog(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ComponentLogEntry(betterproto.Message):
+    """Entry is the ComponentLog's entry information"""
+
     message: str = betterproto.string_field(1)
+    """Message is the log entry's message"""
+
     level: "ComponentLogEntryLevel" = betterproto.enum_field(2)
+    """Level is the severity level of the log entry"""
+
     component: "ComponentLogEntryComponent" = betterproto.message_field(3)
+    """Component is the Cluster component that emitted the log entry"""
+
     fields: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(4)
+    """Fields is a map of the log entry's additional structured fields"""
+
     function: str = betterproto.string_field(5)
+    """Function is the name of the function that emitted the log entry"""
+
     file: str = betterproto.string_field(6)
+    """File is the name of the source file that emitted the log entry"""
+
     line: int = betterproto.int32_field(7)
+    """
+    Line is the line number in the source file that emitted the log entry
+    """
+
     time: datetime = betterproto.message_field(8)
+    """Time is the timestamp at which the log entry was emitted"""
 
 
 @dataclass(eq=False, repr=False)
 class ComponentLogEntryComponent(betterproto.Message):
+    """Component is the Cluster component that emitted the log entry"""
+
     namespace: str = betterproto.string_field(1)
+    """Namespace is the namespace of the component"""
+
     uid: str = betterproto.string_field(2)
+    """UID is the unique identifier of the component"""
+
     type: str = betterproto.string_field(3)
+    """Type is the type of the component"""
 
 
 @dataclass(eq=False, repr=False)
 class Authenticator(betterproto.Message):
+    """
+    Authenticator is registered by a User and used for multi-factor
+     authentication (MFA), for the re-authentication of an existent Session, or
+     for a direct passwordless login via a Passkey.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
     kind: str = betterproto.string_field(2)
-    """Kind is the resource name (i.e. `Group`)."""
+    """Kind is the resource name (i.e. `Authenticator`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
-    """octelium.api.main.meta.v1.Metadata is the object's metadata."""
+    """Metadata is the object's metadata."""
 
     spec: "AuthenticatorSpec" = betterproto.message_field(4)
-    """Spec is the Group specification."""
+    """Spec is the Authenticator specification."""
 
     status: "AuthenticatorStatus" = betterproto.message_field(5)
-    """Status is the current status of the Group."""
+    """Status is the current status of the Authenticator."""
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorSpec(betterproto.Message):
+    """Spec is the Authenticator specification"""
+
     display_name: str = betterproto.string_field(1)
+    """DisplayName is the Authenticator's display name that the User sees"""
+
     state: "AuthenticatorSpecState" = betterproto.enum_field(2)
+    """State is the Authenticator's state"""
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorStatus(betterproto.Message):
+    """Status is the current status of the Authenticator"""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """UserRef is the reference of the Authenticator's User"""
+
     device_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """DeviceRef is the reference of the Authenticator's Device, if any"""
+
     type: "AuthenticatorStatusType" = betterproto.enum_field(3)
+    """Type is the type of the Authenticator"""
+
     info: "AuthenticatorStatusInfo" = betterproto.message_field(4)
+    """Info is the type-specific information of the Authenticator"""
+
     authentication_attempt: "AuthenticatorStatusAuthenticationAttempt" = (
         betterproto.message_field(5)
     )
+    """
+    AuthenticationAttempt is the currently pending authentication attempt
+    """
+
     last_authentication_attempts: List["AuthenticatorStatusAuthenticationAttempt"] = (
         betterproto.message_field(6)
     )
+    """
+    LastAuthenticationAttempts is the list of the last authentication
+     attempts
+    """
+
     successful_authentications: int = betterproto.uint32_field(7)
+    """
+    SuccessfulAuthentications is the total number of the successful
+     authentications via the Authenticator
+    """
+
     failed_authentications: int = betterproto.uint32_field(8)
+    """
+    FailedAuthentications is the total number of the failed authentications
+     via the Authenticator
+    """
+
     total_authentication_attempts: int = betterproto.uint32_field(9)
+    """
+    TotalAuthenticationAttempts is the total number of the authentication
+     attempts via the Authenticator
+    """
+
     ext: Dict[str, "betterproto_lib_google_protobuf.Struct"] = betterproto.map_field(
         10, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE
     )
+    """Ext is a map of internal Cluster-managed extension data"""
+
     is_registered: bool = betterproto.bool_field(11)
+    """
+    IsRegistered indicates whether the Authenticator has completed its
+     registration
+    """
+
     description: str = betterproto.string_field(12)
+    """Description is a human-readable description of the Authenticator"""
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorStatusEncryptedData(betterproto.Message):
+    """EncryptedData is a value that is stored encrypted by the Cluster"""
+
     ciphertext: bytes = betterproto.bytes_field(1)
+    """Ciphertext is the encrypted value"""
+
     nonce: bytes = betterproto.bytes_field(2)
+    """Nonce is the nonce used for the encryption"""
+
     key_secret_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(3)
+    """
+    KeySecretRef is the reference of the Secret containing the key that
+     encrypted the value
+    """
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorStatusInfo(betterproto.Message):
+    """Info is the type-specific information of the Authenticator"""
+
     fido: "AuthenticatorStatusInfoFido" = betterproto.message_field(1, group="type")
+    """FIDO is the information of a FIDO/WebAuthn Authenticator"""
+
     totp: "AuthenticatorStatusInfoTotp" = betterproto.message_field(2, group="type")
+    """TOTP is the information of a TOTP Authenticator"""
+
     tpm: "AuthenticatorStatusInfoTpm" = betterproto.message_field(3, group="type")
+    """TPM is the information of a TPM 2.0 Authenticator"""
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorStatusInfoFido(betterproto.Message):
+    """FIDO is the information of a FIDO/WebAuthn Authenticator"""
+
     id: bytes = betterproto.bytes_field(1)
+    """ID is the WebAuthn credential ID"""
+
     public_key: bytes = betterproto.bytes_field(2)
+    """PublicKey is the credential's public key"""
+
     type: "AuthenticatorStatusInfoFidoType" = betterproto.enum_field(3)
+    """Type is the attachment type of the FIDO Authenticator"""
+
     aaguid: str = betterproto.string_field(4)
+    """
+    AAGUID is the Authenticator Attestation GUID that identifies the
+     model of the Authenticator
+    """
+
     is_passkey: bool = betterproto.bool_field(5)
+    """
+    IsPasskey means that the Authenticator is a Passkey (i.e. it uses a
+     resident/discoverable key credential)
+    """
+
     id_hash: bytes = betterproto.bytes_field(6)
+    """IDHash is the hash of the credential ID"""
+
     backup_eligible: bool = betterproto.bool_field(7)
+    """
+    BackupEligible means that the credential is eligible to be backed up
+     and synced across the User's devices
+    """
+
     is_attestation_verified: bool = betterproto.bool_field(8)
+    """
+    IsAttestationVerified means that the Authenticator's attestation was
+     verified
+    """
+
     is_software: bool = betterproto.bool_field(9)
+    """
+    IsSoftware means that the Authenticator is software-based (e.g. a
+     password manager)
+    """
+
     is_hardware: bool = betterproto.bool_field(10)
+    """
+    IsHardware means that the Authenticator is hardware-backed (e.g. a
+     security key or a platform authenticator)
+    """
+
+    sign_count: int = betterproto.uint32_field(11)
+    """
+    SignCount is the credential's signature counter which is used to
+     detect the cloned Authenticators
+    """
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorStatusInfoTotp(betterproto.Message):
+    """
+    TOTP is the information of a time-based one-time password (TOTP)
+     Authenticator
+    """
+
     shared_secret: "AuthenticatorStatusEncryptedData" = betterproto.message_field(1)
+    """SharedSecret is the TOTP shared secret"""
+
+    period_seconds: int = betterproto.uint32_field(2)
+    """PeriodSeconds is the duration in seconds of a single time step"""
+
+    digits: int = betterproto.uint32_field(3)
+    """Digits is the number of digits of the generated one-time passwords"""
+
+    algorithm: "AuthenticatorStatusInfoTotpAlgorithm" = betterproto.enum_field(4)
+    """
+    Algorithm is the HMAC algorithm used to generate the one-time
+     passwords
+    """
+
+    last_accepted_time_step: int = betterproto.uint64_field(5)
+    """
+    LastAcceptedTimeStep is the last time step that was accepted. It is
+     used to prevent replaying the same one-time password.
+    """
+
+    last_accepted_at: datetime = betterproto.message_field(6)
+    """
+    LastAcceptedAt is the timestamp at which a one-time password was
+     last accepted
+    """
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorStatusInfoTpm(betterproto.Message):
+    """
+    TPM is the information of a Trusted Platform Module (TPM) 2.0
+     Authenticator
+    """
+
     ak_bytes: bytes = betterproto.bytes_field(1)
+    """AKBytes is the TPM's attestation key"""
+
     attestation_parameters: "AuthenticatorStatusInfoTpmAttestationParameters" = (
         betterproto.message_field(2)
     )
+    """
+    AttestationParameters is the attestation of the TPM's attestation
+     key
+    """
+
     ek_public_key: bytes = betterproto.bytes_field(3)
+    """EKPublicKey is the public key of the TPM's endorsement key"""
+
+    endorsement: "AuthenticatorStatusInfoTpmEndorsement" = betterproto.message_field(4)
+    """Endorsement is the provenance of the TPM's endorsement key"""
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorStatusInfoTpmAttestationParameters(betterproto.Message):
+    """
+    AttestationParameters is the attestation of the TPM's attestation
+     key
+    """
+
     public: bytes = betterproto.bytes_field(1)
+    """Public is the public area of the attestation key"""
+
     create_data: bytes = betterproto.bytes_field(2)
+    """CreateData is the creation data of the attestation key"""
+
     create_attestation: bytes = betterproto.bytes_field(3)
+    """
+    CreateAttestation is the creation attestation of the attestation
+     key
+    """
+
     create_signature: bytes = betterproto.bytes_field(4)
+    """CreateSignature is the creation signature of the attestation key"""
+
+
+@dataclass(eq=False, repr=False)
+class AuthenticatorStatusInfoTpmEndorsement(betterproto.Message):
+    """
+    Endorsement is the provenance of the TPM's endorsement key as it was
+     established upon registering the Authenticator
+    """
+
+    verification: "AuthenticatorStatusInfoTpmEndorsementVerification" = (
+        betterproto.enum_field(1)
+    )
+    """
+    Verification is the outcome of the verification of the endorsement
+     key certificate
+    """
+
+    certificate_sha256: bytes = betterproto.bytes_field(2)
+    """
+    CertificateSHA256 is the SHA256 digest of the DER-encoded
+     endorsement key certificate
+    """
+
+    trusted_casha256: bytes = betterproto.bytes_field(3)
+    """
+    TrustedCASHA256 is the SHA256 digest of the DER-encoded trusted CA
+     that the endorsement key certificate chained to
+    """
+
+    manufacturer_id: int = betterproto.uint32_field(4)
+    """
+    ManufacturerID is the TCG vendor identifier of the TPM
+     manufacturer
+    """
+
+    manufacturer: str = betterproto.string_field(5)
+    """Manufacturer is the human-readable name of the TPM manufacturer"""
+
+    model: str = betterproto.string_field(6)
+    """Model is the model of the TPM"""
+
+    version: str = betterproto.string_field(7)
+    """
+    Version is the version of the TPM as stated by the endorsement key
+     certificate. It is not the current firmware version of the TPM.
+    """
+
+    verified_at: datetime = betterproto.message_field(8)
+    """VerifiedAt is the timestamp at which the verification was performed"""
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorStatusAuthenticationAttempt(betterproto.Message):
+    """
+    AuthenticationAttempt is a single authentication attempt via the
+     Authenticator
+    """
+
     created_at: datetime = betterproto.message_field(1)
+    """CreatedAt is the timestamp at which the attempt was created"""
+
     encrypted_challenge_request: "AuthenticatorStatusEncryptedData" = (
         betterproto.message_field(2)
     )
+    """
+    EncryptedChallengeRequest is the encrypted challenge that was issued
+     for the attempt
+    """
+
     encrypted_data_map: Dict[str, "AuthenticatorStatusEncryptedData"] = (
         betterproto.map_field(3, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE)
     )
+    """EncryptedDataMap is a map of the attempt's additional encrypted data"""
+
     data_map: Dict[str, bytes] = betterproto.map_field(
         4, betterproto.TYPE_STRING, betterproto.TYPE_BYTES
     )
+    """DataMap is a map of the attempt's additional data"""
+
     session_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(5)
+    """
+    SessionRef is the reference of the Session that performed the attempt
+    """
+
+    completed_at: datetime = betterproto.message_field(6)
+    """CompletedAt is the timestamp at which the attempt was completed"""
 
 
 @dataclass(eq=False, repr=False)
 class AuthenticatorList(betterproto.Message):
+    """
+    AuthenticatorList is the list of Authenticators returned by the
+     ListAuthenticator method.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version (i.e. "core/v1")"""
 
     kind: str = betterproto.string_field(2)
-    """Kind is the resource name (i.e. `GroupList`)."""
+    """Kind is the resource name (i.e. `AuthenticatorList`)."""
 
     items: List["Authenticator"] = betterproto.message_field(3)
-    """Items is the list of Groups."""
+    """Items is the list of Authenticators."""
 
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
@@ -4810,66 +12837,147 @@ class AuthenticatorList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ListAuthenticatorOptions(betterproto.Message):
+    """
+    ListAuthenticatorOptions is the request of the ListAuthenticator method.
+    """
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common sets the common listing options (e.g. pagination, ordering and
+     filtering)
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """UserRef filters the Authenticators by their User"""
 
 
 @dataclass(eq=False, repr=False)
 class GeoIp(betterproto.Message):
+    """
+    GeoIP is the geolocation information of an IP address. It is resolved by the
+     Cluster from the MaxMind MMDB databases that are set in the ClusterConfig
+     and it is only set if geolocation is enabled.
+    """
+
     ip: str = betterproto.string_field(1)
+    """IP is the IP address itself"""
+
     ip_version: "GeoIpIpVersion" = betterproto.enum_field(2)
+    """IPVersion is the version of the IP address"""
+
     country: "GeoIpCountry" = betterproto.message_field(3)
+    """Country is the country of the IP address"""
+
     region: "GeoIpRegion" = betterproto.message_field(4)
+    """
+    Region is the subdivision/region of the IP address within its country
+    """
+
     city: "GeoIpCity" = betterproto.message_field(5)
+    """City is the city of the IP address"""
+
     continent: "GeoIpContinent" = betterproto.message_field(6)
+    """Continent is the continent of the IP address"""
+
     network: "GeoIpNetwork" = betterproto.message_field(7)
+    """Network is the network information of the IP address"""
+
     timezone: "GeoIpTimezone" = betterproto.message_field(8)
+    """Timezone is the timezone of the IP address"""
+
     postal_code: str = betterproto.string_field(9)
+    """PostalCode is the postal code of the IP address"""
+
     coordinates: "GeoIpCoordinates" = betterproto.message_field(10)
+    """Coordinates is the approximate geographic location of the IP address"""
 
 
 @dataclass(eq=False, repr=False)
 class GeoIpCountry(betterproto.Message):
+    """Country is the country of the IP address"""
+
     code: str = betterproto.string_field(1)
+    """Code is the ISO 3166-1 country code (e.g. "US")"""
+
     name: str = betterproto.string_field(2)
+    """Name is the country's name (e.g. "United States")"""
 
 
 @dataclass(eq=False, repr=False)
 class GeoIpContinent(betterproto.Message):
+    """Continent is the continent of the IP address"""
+
     code: str = betterproto.string_field(1)
+    """Code is the continent's code (e.g. "EU")"""
+
     name: str = betterproto.string_field(2)
+    """Name is the continent's name (e.g. "Europe")"""
 
 
 @dataclass(eq=False, repr=False)
 class GeoIpRegion(betterproto.Message):
+    """
+    Region is the subdivision/region of the IP address within its country
+    """
+
     code: str = betterproto.string_field(1)
+    """Code is the region's code"""
+
     name: str = betterproto.string_field(2)
+    """Name is the region's name"""
 
 
 @dataclass(eq=False, repr=False)
 class GeoIpCity(betterproto.Message):
+    """City is the city of the IP address"""
+
     name: str = betterproto.string_field(1)
+    """Name is the city's name (e.g. "New York")"""
 
 
 @dataclass(eq=False, repr=False)
 class GeoIpCoordinates(betterproto.Message):
+    """Coordinates is the approximate geographic location of the IP address"""
+
     latitude: float = betterproto.double_field(1)
+    """Latitude is the latitude in degrees"""
+
     longitude: float = betterproto.double_field(2)
+    """Longitude is the longitude in degrees"""
+
     accuracy_radius: float = betterproto.double_field(3)
+    """
+    AccuracyRadius is the radius in kilometers within which the IP address
+     is likely to be located
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GeoIpNetwork(betterproto.Message):
+    """Network is the network information of the IP address"""
+
     asn: int = betterproto.int64_field(1)
+    """ASN is the autonomous system number of the network"""
+
     isp: str = betterproto.string_field(2)
+    """ISP is the name of the internet service provider"""
+
     organization: str = betterproto.string_field(3)
+    """Organization is the name of the organization that owns the network"""
+
     domain: str = betterproto.string_field(4)
+    """Domain is the second-level domain of the network"""
 
 
 @dataclass(eq=False, repr=False)
 class GeoIpTimezone(betterproto.Message):
+    """Timezone is the timezone of the IP address"""
+
     id: str = betterproto.string_field(1)
+    """ID is the IANA timezone identifier (e.g. "America/New_York")"""
+
     offset: float = betterproto.double_field(2)
+    """Offset is the timezone's offset in hours from UTC"""
 
 
 class MainServiceStub(betterproto.ServiceStub):

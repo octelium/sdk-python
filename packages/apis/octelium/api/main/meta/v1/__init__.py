@@ -14,19 +14,43 @@ import betterproto
 
 
 class CommonListOptionsOrderByType(betterproto.Enum):
+    """Type is the field by which the list is ordered"""
+
     TYPE_UNSET = 0
+    """
+    TYPE_UNSET falls back to the default behavior which is to order the
+     list by the creation date.
+    """
+
     NAME = 1
+    """NAME orders the list by the objects' names"""
+
     CREATED_AT = 2
+    """CREATED_AT orders the list by the objects' creation dates"""
 
 
 class CommonListOptionsOrderByMode(betterproto.Enum):
+    """Mode is the direction in which the list is ordered"""
+
     MODE_UNSET = 0
+    """MODE_UNSET falls back to the default direction"""
+
     ASC = 1
+    """ASC orders the list in an ascending order"""
+
     DESC = 2
+    """DESC orders the list in a descending order"""
 
 
 @dataclass(eq=False, repr=False)
 class Metadata(betterproto.Message):
+    """
+    Metadata is the metadata that is common to every Cluster resource. It
+     carries the resource's identity (i.e. its UID and name), its
+     human-readable information as well as the Cluster-managed bookkeeping of the
+     resource's versioning and provenance.
+    """
+
     uid: str = betterproto.string_field(1)
     """
     UID is the unique UUID value for the object assigned by the Cluster.
@@ -72,8 +96,8 @@ class Metadata(betterproto.Message):
         9, betterproto.TYPE_STRING, betterproto.TYPE_STRING
     )
     """
-    Labels is a map of string keys and values that can be used to store
-     metadata about the object.
+    Annotations is a map of string keys and values that can be used to store
+     arbitrary metadata about the object.
     """
 
     pic_url: str = betterproto.string_field(10)
@@ -140,6 +164,11 @@ class Metadata(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ObjectReference(betterproto.Message):
+    """
+    ObjectReference is a reference to another Cluster resource. It identifies
+     the referenced resource by its kind and either its UID or its name.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version of the reference resource"""
 
@@ -162,6 +191,11 @@ class ObjectReference(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class Duration(betterproto.Message):
+    """
+    Duration is a length of time that is expressed in a single unit of choice.
+     Exactly one of the units is set (e.g. `seconds: 30`).
+    """
+
     milliseconds: int = betterproto.uint32_field(1, group="type")
     """Milliseconds is the duration set in milliseconds"""
 
@@ -186,8 +220,13 @@ class Duration(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class DeleteOptions(betterproto.Message):
+    """
+    DeleteOptions is the request of the Delete methods. The object to be deleted
+     is identified by either its UID or its name.
+    """
+
     uid: str = betterproto.string_field(1)
-    """UID is the objet's UID."""
+    """UID is the object's UID."""
 
     name: str = betterproto.string_field(2)
     """
@@ -198,6 +237,11 @@ class DeleteOptions(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class GetOptions(betterproto.Message):
+    """
+    GetOptions is the request of the Get methods. The object to be retrieved is
+     identified by either its UID or its name.
+    """
+
     uid: str = betterproto.string_field(1)
     """UID is the object's UID"""
 
@@ -207,11 +251,18 @@ class GetOptions(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class OperationResult(betterproto.Message):
+    """
+    OperationResult is the response of the methods that return no resource (e.g.
+     the Delete methods). It is intentionally empty.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class DualStackIp(betterproto.Message):
+    """DualStackIP is a pair of an IPv4 and an IPv6 address."""
+
     ipv4: str = betterproto.string_field(1)
     """IPv4 is the IPv4 address."""
 
@@ -221,6 +272,8 @@ class DualStackIp(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class DualStackNetwork(betterproto.Message):
+    """DualStackNetwork is a pair of an IPv4 and an IPv6 network range."""
+
     v4: str = betterproto.string_field(1)
     """
     V4 is the IPv4 network address represented as CIDR notation IP address
@@ -236,21 +289,32 @@ class DualStackNetwork(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ListResponseMeta(betterproto.Message):
+    """
+    ListResponseMeta is the pagination information that is common to every List
+     response.
+    """
+
     page: int = betterproto.uint32_field(1)
     """Page is the page number. Starts with zero."""
 
     items_per_page: int = betterproto.uint32_field(2)
-    """ItemsPerPage is number of items per page."""
+    """ItemsPerPage is the number of items per page."""
 
     total_count: int = betterproto.uint32_field(3)
     """TotalCount is the total count of items that can be obtained."""
 
     has_more: bool = betterproto.bool_field(4)
-    """HasMore shows whether there a next page is available"""
+    """HasMore shows whether a next page is available"""
 
 
 @dataclass(eq=False, repr=False)
 class LogMetadata(betterproto.Message):
+    """
+    LogMetadata is the metadata that is common to every log entry (i.e. the
+     AccessLogs and the ComponentLogs). It is the log-entry counterpart of the
+     Metadata of the Cluster resources.
+    """
+
     id: str = betterproto.string_field(1)
     """ID is the unique ID for the log entry"""
 
@@ -259,19 +323,25 @@ class LogMetadata(betterproto.Message):
 
     actor_ref: "ObjectReference" = betterproto.message_field(3)
     """
-    Actor is the actor whose action triggered the log entry (i.e. the User,
-     their Session and Device if available)
+    ActorRef is the reference of the actor whose action triggered the log
+     entry (i.e. the User, their Session and Device if available)
     """
 
     target_ref: "ObjectReference" = betterproto.message_field(4)
     """
-    Target is the target of the action that triggered the log entry (e.g. the
-     Service and its Namespace in the case of a SERVICE log entry)
+    TargetRef is the reference of the target of the action that triggered the
+     log entry (e.g. the Service and its Namespace in the case of a SERVICE log
+     entry)
     """
 
 
 @dataclass(eq=False, repr=False)
 class CommonListOptions(betterproto.Message):
+    """
+    CommonListOptions is the listing options that are common to every List
+     request.
+    """
+
     page: int = betterproto.uint32_field(1)
     """Page is the page number, starts at zero."""
 
@@ -284,5 +354,10 @@ class CommonListOptions(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class CommonListOptionsOrderBy(betterproto.Message):
+    """OrderBy sets the ordering of the returned list"""
+
     type: "CommonListOptionsOrderByType" = betterproto.enum_field(1)
+    """Type is the field by which the list is ordered"""
+
     mode: "CommonListOptionsOrderByMode" = betterproto.enum_field(2)
+    """Mode is the direction in which the list is ordered"""

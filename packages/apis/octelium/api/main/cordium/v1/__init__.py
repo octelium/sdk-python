@@ -30,104 +30,390 @@ if TYPE_CHECKING:
 
 
 class WorkspaceSpecRuntimeTaskType(betterproto.Enum):
+    """
+    Type is the point of the Workspace's lifecycle at which the Task is
+     run
+    """
+
     UNKNOWN = 0
+    """UNKNOWN is not used. The type of a Task must be explicitly set."""
+
     ON_CREATE = 1
+    """
+    ON_CREATE runs the Task only on a fresh run (i.e. the first start
+     of a persistent Workspace and every start of an ephemeral one). It
+     is typically used for one-time setup such as installing
+     dependencies or running migrations.
+    """
+
     POST_START = 2
+    """
+    POST_START runs the Task on every start of the Workspace. It is
+     typically used to start background services and dev servers.
+    """
+
     PRE_STOP = 3
+    """
+    PRE_STOP runs the Task right before the Workspace's container is
+     stopped. It is typically used for graceful shutdown and cleanup.
+    """
 
 
 class WorkspaceSpecRuntimeTaskOnFailure(betterproto.Enum):
+    """OnFailure is the behavior of the Cluster when the Task fails"""
+
     ON_FAILURE_UNSET = 0
+    """ON_FAILURE_UNSET falls back to the default behavior."""
+
     ON_FAILURE_ABORT = 1
+    """
+    ON_FAILURE_ABORT aborts the initialization of the Workspace once
+     the Task fails.
+    """
+
     ON_FAILURE_CONTINUE = 2
+    """
+    ON_FAILURE_CONTINUE logs the Task's failure and continues the
+     initialization of the Workspace.
+    """
+
+
+class WorkspaceSpecRuntimeNetworkRuleAction(betterproto.Enum):
+    """Action is the effect of the Rule when it matches"""
+
+    ACTION_UNSET = 0
+    """ACTION_UNSET falls back to the default action."""
+
+    ALLOW = 1
+    """ALLOW allows the matched traffic."""
+
+    DENY = 2
+    """DENY denies the matched traffic."""
+
+
+class WorkspaceSpecRuntimeTimeoutMode(betterproto.Enum):
+    """Mode is the inactivity timeout mode"""
+
+    MODE_UNSET = 0
+    """
+    MODE_UNSET falls back to the default behavior which is to apply
+     the Cluster's inactivity timeout.
+    """
+
+    DEFAULT = 1
+    """DEFAULT applies the Cluster's inactivity timeout."""
+
+    DISABLED = 2
+    """
+    DISABLED disables the inactivity timeout entirely. It is only
+     honored when the ClusterConfig allows Workspaces to have no
+     timeout.
+    """
 
 
 class WorkspaceStatusState(betterproto.Enum):
+    """State is the current state of the Workspace's lifecycle"""
+
     UNKNOWN = 0
+    """UNKNOWN is not used."""
+
     INIT_REQUEST = 1
+    """
+    INIT_REQUEST means that a start request has been accepted by the API
+     server.
+    """
+
     INITIALIZING = 2
+    """
+    INITIALIZING means that the Cluster is provisioning the Workspace's
+     underlying resources and waiting for its supervisor to become ready.
+    """
+
     PULLING_IMAGE = 3
+    """
+    PULLING_IMAGE means that the container image is being pulled from the
+     registry.
+    """
+
     BUILDING_IMAGE = 4
+    """
+    BUILDING_IMAGE means that the container image is being built from a
+     Dockerfile or a devcontainer spec.
+    """
+
     STARTING_RUNTIME = 5
+    """
+    STARTING_RUNTIME means that the Workspace's container has started and
+     that the agent is initializing.
+    """
+
     PREPARING = 6
+    """
+    PREPARING means that the agent is running the lifecycle setup (i.e.
+     the repository cloning, the ON_CREATE tasks, the dotfiles and the
+     devcontainer Features).
+    """
+
     RUNNING = 7
+    """
+    RUNNING means that the Workspace is fully initialized and ready to be
+     used.
+    """
+
     STOPPING_REQUEST = 9
+    """STOPPING_REQUEST means that a stop request has been received."""
+
     STOPPING = 10
+    """
+    STOPPING means that the Workspace is shutting down gracefully and
+     running its PRE_STOP tasks.
+    """
+
     STOPPED = 11
+    """
+    STOPPED means that the Workspace is not running. Its storage is
+     preserved unless the Workspace is ephemeral.
+    """
 
 
 class WorkspaceStatusStoppingReason(betterproto.Enum):
+    """StoppingReason is the reason for which a Workspace was stopped"""
+
     STOPPING_REASON_UNSET = 0
+    """
+    STOPPING_REASON_UNSET means that no stoppage reason is set (e.g. the
+     Workspace has never been stopped yet).
+    """
+
     STOPPING_REASON_API = 1
+    """
+    STOPPING_REASON_API means that the Workspace was stopped upon an
+     explicit API request (e.g. via the StopWorkspace method).
+    """
+
     STOPPING_REASON_ERROR = 2
+    """
+    STOPPING_REASON_ERROR means that the Workspace was stopped because of
+     a failure of the run.
+    """
+
     STOPPING_REASON_CLUSTER = 3
+    """
+    STOPPING_REASON_CLUSTER means that the Workspace was stopped by the
+     Cluster itself (e.g. once its inactivity timeout was exceeded).
+    """
 
 
 class WorkspaceStatusSharedPortMode(betterproto.Enum):
+    """Mode is the audience with which the Application is shared"""
+
     UNSET = 0
+    """UNSET is not used. A shared Application must have an explicit mode."""
+
     MEMBERS = 1
+    """
+    MEMBERS shares the Application with the Members of the Workspace's
+     Space.
+    """
+
     ALL = 2
+    """ALL shares the Application with all the Cluster's Users."""
 
 
 class TemplateStatusBuildInfoBuildState(betterproto.Enum):
+    """State is the current state of the pre-build"""
+
     STATE_UNKNOWN = 0
+    """STATE_UNKNOWN is not used."""
+
     STATE_RUNNING = 1
+    """STATE_RUNNING means that the pre-build is currently running."""
+
     STATE_READY = 2
+    """
+    STATE_READY means that the pre-build successfully completed and
+     that its storage snapshot can be used by the new Workspaces.
+    """
+
     STATE_FAILED = 3
+    """
+    STATE_FAILED means that the pre-build failed or that it was
+     canceled.
+    """
 
 
 class SpaceStatusType(betterproto.Enum):
+    """Type is the type of the Space"""
+
     SPACE_TYPE_UNSET = 0
+    """SPACE_TYPE_UNSET is not used."""
+
     USER = 1
+    """
+    USER is a Space that is personal to a single Octelium User. Members
+     cannot currently be added to it and it cannot define resource limits.
+    """
+
     ORGANIZATION = 2
+    """
+    ORGANIZATION is a shared Space that can have several Members with
+     different roles.
+    """
 
 
 class ListSpaceOptionsMode(betterproto.Enum):
+    """
+    Mode is the relationship between the calling User and the listed Spaces
+    """
+
     MODE_UNSET = 0
+    """MODE_UNSET falls back to MODE_CREATED_BY."""
+
     MODE_CREATED_BY = 1
+    """
+    MODE_CREATED_BY lists only the Spaces that were created by the calling
+     User.
+    """
+
     MODE_MEMBER = 2
+    """
+    MODE_MEMBER lists the Spaces in which the calling User has a Membership.
+    """
 
 
 class MembershipSpecRole(betterproto.Enum):
+    """Role is the level of access that the Member has inside the Space"""
+
     UNKNOWN = 0
+    """
+    UNKNOWN is not used. It is treated as USER upon the creation of a
+     Membership.
+    """
+
     OWNER = 1
+    """
+    OWNER has full control over the Space including deleting it and
+     managing its Owners. Granting this Role requires the caller to be an
+     OWNER themselves and requires the target User to be authorized to own
+     Spaces by the ClusterConfig.
+    """
+
     ADMIN = 2
+    """
+    ADMIN can manage the Space's Templates, Secrets, GitProviders and
+     Memberships.
+    """
+
     USER = 3
+    """
+    USER can use the Space (e.g. create Workspaces in it) but cannot
+     manage it.
+    """
 
 
 class CreateMembershipRequestRole(betterproto.Enum):
+    """
+    Role is the level of access that the new Member has inside the Space. It
+     mirrors the Membership's own Role
+    """
+
     UNKNOWN = 0
+    """UNKNOWN is not used. It is treated as USER."""
+
     OWNER = 1
+    """
+    OWNER has full control over the Space. Granting this Role requires the
+     caller to be an OWNER themselves.
+    """
+
     ADMIN = 2
+    """
+    ADMIN can manage the Space's Templates, Secrets, GitProviders and
+     Memberships.
+    """
+
     USER = 3
+    """USER can use the Space but cannot manage it."""
 
 
 class UserSecretSpecType(betterproto.Enum):
+    """Type is the kind of the UserSecret's content"""
+
     DEFAULT = 0
+    """DEFAULT is an arbitrary value that is provided by the User."""
+
     SSH_KEY = 1
+    """
+    SSH_KEY is an ECDSA key pair that is generated by the Cluster. The
+     private key is stored as the UserSecret's data and it is automatically
+     loaded into an SSH agent inside every Workspace of the User while the
+     public key is exposed in the status.
+    """
 
 
 class ShareWorkspacePortRequestMode(betterproto.Enum):
+    """
+    Mode is the audience with which the Application is shared. It mirrors the
+     Workspace status' SharedPort mode
+    """
+
     UNSET = 0
+    """UNSET is not used. A mode must be explicitly provided."""
+
     MEMBERS = 1
+    """
+    MEMBERS shares the Application with the Members of the Workspace's
+     Space.
+    """
+
     ALL = 2
+    """ALL shares the Application with all the Cluster's Users."""
 
 
 class ListenLogResponseMode(betterproto.Enum):
+    """Mode is the output stream that the log entry was emitted on"""
+
     MODE_UNKNOWN = 0
+    """MODE_UNKNOWN is not used."""
+
     MODE_STDOUT = 1
+    """MODE_STDOUT means that the entry was emitted on the standard output."""
+
     MODE_STDERR = 2
+    """MODE_STDERR means that the entry was emitted on the standard error."""
 
 
 class ListenLogResponseType(betterproto.Enum):
+    """Type is the initialization stage that produced the log entry"""
+
     TYPE_UNKNOWN = 0
+    """TYPE_UNKNOWN is not used."""
+
     TYPE_CLONING_REPO = 1
+    """
+    TYPE_CLONING_REPO means that the entry was produced while cloning a
+     repository.
+    """
+
     TYPE_PULLING_IMAGE = 2
+    """
+    TYPE_PULLING_IMAGE means that the entry was produced while pulling the
+     container image.
+    """
+
     TYPE_BUILDING_IMAGE = 3
+    """
+    TYPE_BUILDING_IMAGE means that the entry was produced while building the
+     container image.
+    """
+
     TYPE_TASK = 4
+    """TYPE_TASK means that the entry was produced by a lifecycle task."""
 
 
 class ClusterConfigSpecSpaceOwnershipRuleEffect(betterproto.Enum):
+    """Effect is the effect of the Rule when its Condition matches"""
+
     UNKNOWN = 0
     """UNKNOWN is not used."""
 
@@ -146,419 +432,1232 @@ class ClusterConfigSpecSpaceOwnershipRuleEffect(betterproto.Enum):
 
 @dataclass(eq=False, repr=False)
 class Workspace(betterproto.Message):
+    """
+    Workspace, which is synonymous with a sandbox, is the fundamental execution
+     unit of Cordium. It is an isolated, rootless, container-based development
+     environment that can be used interactively or programmatically via the
+     web-based console, the `cordium` CLI, standard SSH and the gRPC-based APIs.
+     Every Workspace belongs to exactly one Template and one Space and it is
+     owned by an Octelium User. A Workspace is assigned a short randomly
+     generated name (i.e. 3 to 6 lowercase alphanumeric characters) by the
+     Cluster. The effective configuration of a Workspace run is the result of
+     merging the Workspace spec with the spec of its Template, the runtime
+     configuration of its Space, the User's UserConfig as well as the Cluster
+     defaults.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `Workspace`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "WorkspaceSpec" = betterproto.message_field(4)
+    """Spec is the Workspace specification."""
+
     status: "WorkspaceStatus" = betterproto.message_field(5)
+    """Status is the current status of the Workspace."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpec(betterproto.Message):
+    """Spec is the Workspace specification"""
+
     image: "WorkspaceSpecImage" = betterproto.message_field(1)
+    """Image defines how the Workspace's container image is obtained."""
+
     runtime: "WorkspaceSpecRuntime" = betterproto.message_field(2)
+    """Runtime controls the behavior of the Workspace's container."""
+
     repository: "WorkspaceSpecRepository" = betterproto.message_field(3)
+    """
+    Repository is the primary git repository which is cloned into
+     `/workspace/repo`.
+    """
+
     additional_repositories: List["WorkspaceSpecAdditionalRepository"] = (
         betterproto.message_field(4)
     )
+    """
+    AdditionalRepositories is the list of the secondary repositories that
+     are cloned alongside the primary one.
+    """
+
     applications: List["WorkspaceSpecApplication"] = betterproto.message_field(5)
+    """
+    Applications is the list of the named ports that are exposed via the
+     Cordium portal.
+    """
+
     limit: "WorkspaceSpecLimit" = betterproto.message_field(6)
-    auto_stop: bool = betterproto.bool_field(7)
-    vars: List["WorkspaceSpecVar"] = betterproto.message_field(8)
+    """Limit is the compute resources that are allocated for the Workspace."""
+
+    vars: List["WorkspaceSpecVar"] = betterproto.message_field(7)
+    """
+    Vars is the list of the variables that are substituted inside the spec.
+    """
+
+    is_ephemeral: bool = betterproto.bool_field(8)
+    """
+    IsEphemeral deletes the Workspace's storage once it is stopped so that
+     every start provisions a fresh volume and runs the full initialization
+     from scratch. A persistent (i.e. non-ephemeral) Workspace instead
+     preserves its filesystem across stops and restarts.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImage(betterproto.Message):
+    """
+    Image defines how the container image that is used as the Workspace's
+     root filesystem is obtained. If it is unset, the Cluster's default base
+     image is used.
+    """
+
     dockerfile: "WorkspaceSpecImageDockerfile" = betterproto.message_field(
         1, group="type"
     )
+    """
+    Dockerfile builds the image from an inline or a downloaded
+     Dockerfile.
+    """
+
     registry: "WorkspaceSpecImageRegistry" = betterproto.message_field(2, group="type")
+    """Registry pulls a pre-built image from a container registry."""
+
     git: "WorkspaceSpecImageGit" = betterproto.message_field(3, group="type")
+    """Git builds the image from a dedicated git repository."""
+
     repository: "WorkspaceSpecImageRepository" = betterproto.message_field(
         4, group="type"
     )
+    """
+    Repository builds the image from the Workspace's own primary
+     repository.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImageDockerfile(betterproto.Message):
+    """
+    Dockerfile builds the image from a Dockerfile that is provided
+     directly instead of being read from a repository.
+    """
+
     inline: str = betterproto.string_field(1, group="type")
+    """Inline is the content of the Dockerfile provided as a string."""
+
     url: str = betterproto.string_field(2, group="type")
+    """URL is a URL from which the Dockerfile content is downloaded."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImageGit(betterproto.Message):
+    """
+    Git builds the image from a dedicated git repository which is separate
+     from the Workspace's own repository.
+    """
+
     url: str = betterproto.string_field(1)
+    """
+    URL is the HTTPS URL of the git repository (e.g.
+     `https://github.com/myorg/dev-images`).
+    """
+
     checkout: str = betterproto.string_field(2)
+    """
+    Checkout is an optional branch, tag or commit to check out after
+     cloning the repository.
+    """
+
     dockerfile: str = betterproto.string_field(3)
+    """
+    Dockerfile is the path of the Dockerfile inside the repository. If
+     it is unset, Cordium looks for a devcontainer spec (i.e.
+     `.devcontainer/devcontainer.json` or `.devcontainer.json`) in the
+     repository instead.
+    """
+
     context: str = betterproto.string_field(4)
+    """
+    Context is the build context directory inside the repository. It
+     defaults to the repository root.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImageRegistry(betterproto.Message):
+    """Registry pulls a pre-built image from a container registry."""
+
     url: str = betterproto.string_field(1)
+    """
+    URL is the image reference (e.g. `ubuntu:24.04` or
+     `registry.example.com/dev/base:latest`).
+    """
+
     authentication: "WorkspaceSpecImageRegistryAuthentication" = (
         betterproto.message_field(2)
     )
+    """
+    Authentication is set for the private registries that require
+     authentication.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImageRegistryAuthentication(betterproto.Message):
+    """
+    Authentication is the credentials that are used to pull the image
+     from a private registry.
+    """
+
     username: str = betterproto.string_field(1)
+    """Username is the registry username."""
+
     password: "WorkspaceSpecImageRegistryAuthenticationPassword" = (
         betterproto.message_field(2)
     )
+    """Password is the registry password."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImageRegistryAuthenticationPassword(betterproto.Message):
+    """Password is the registry password or token."""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret is the name of a Secret in the same Space whose
+     content is used as the password. It is resolved by the Cluster
+     at initialization time.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImageRepository(betterproto.Message):
+    """
+    Repository builds the image out of the Workspace's own primary
+     repository (i.e. the `repository` field of the spec).
+    """
+
     devcontainer: "WorkspaceSpecImageRepositoryDevcontainer" = (
         betterproto.message_field(1, group="type")
     )
+    """
+    Devcontainer builds the image from the repository's devcontainer
+     spec.
+    """
+
     dockerfile: "WorkspaceSpecImageRepositoryDockerfile" = betterproto.message_field(
         2, group="type"
     )
+    """
+    Dockerfile builds the image from a Dockerfile inside the
+     repository.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImageRepositoryDevcontainer(betterproto.Message):
+    """
+    Devcontainer builds the image from the Development Container spec
+     that is contained in the repository.
+    """
+
     dir_path: str = betterproto.string_field(1)
+    """
+    DirPath is the directory of the devcontainer spec inside the
+     repository (e.g. `.devcontainer`).
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecImageRepositoryDockerfile(betterproto.Message):
+    """
+    Dockerfile builds the image from a Dockerfile that is contained in
+     the repository.
+    """
+
     path: str = betterproto.string_field(1)
+    """
+    Path is the path of the Dockerfile inside the repository (e.g.
+     `docker/Dockerfile.dev`).
+    """
+
     context: str = betterproto.string_field(2)
+    """
+    Context is the build context directory inside the repository. It
+     defaults to the repository root.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRepository(betterproto.Message):
+    """
+    Repository is a git repository that is cloned into the Workspace at
+     initialization time.
+    """
+
     url: str = betterproto.string_field(1)
+    """
+    URL is the HTTPS URL of the git repository (e.g.
+     `https://github.com/myorg/my-project`). Only the `https` scheme is
+     supported.
+    """
+
     clone_options: "WorkspaceSpecRepositoryCloneOptions" = betterproto.message_field(2)
+    """CloneOptions controls how the repository is cloned."""
+
     authentication: "WorkspaceSpecRepositoryAuthentication" = betterproto.message_field(
         3
     )
+    """
+    Authentication is set for the private repositories that require
+     authentication.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRepositoryAuthentication(betterproto.Message):
+    """
+    Authentication is the credentials that are used to clone private
+     repositories. It is not needed when a GitProvider is associated with
+     the Template since, in that case, the User's OAuth2 token is
+     automatically injected instead.
+    """
+
     http: "WorkspaceSpecRepositoryAuthenticationHttp" = betterproto.message_field(
         1, group="type"
     )
+    """HTTP is the HTTP basic authentication."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRepositoryAuthenticationHttp(betterproto.Message):
+    """HTTP is the HTTP basic authentication credentials."""
+
     username: str = betterproto.string_field(1)
+    """Username is the basic authentication username (e.g. `oauth2`)."""
+
     password: "WorkspaceSpecRepositoryAuthenticationHttpPassword" = (
         betterproto.message_field(2)
     )
+    """Password is the basic authentication password."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRepositoryAuthenticationHttpPassword(betterproto.Message):
+    """Password is the password, token or personal access token."""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret is the name of a Secret in the same Space whose
+     content is used as the password. It is resolved by the Cluster
+     at initialization time.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRepositoryCloneOptions(betterproto.Message):
+    """CloneOptions controls how the repository is cloned."""
+
     branch: str = betterproto.string_field(1)
+    """
+    Branch is the branch to be cloned. It defaults to the repository's
+     default branch.
+    """
+
     depth: int = betterproto.uint32_field(2)
+    """
+    Depth is the number of commits to be fetched. It is only effective
+     when disableLazyUnshallow is set.
+    """
+
     single_branch: bool = betterproto.bool_field(3)
+    """SingleBranch fetches only the chosen branch instead of every branch."""
+
     shallow_submodules: bool = betterproto.bool_field(4)
+    """
+    ShallowSubmodules clones the repository's submodules with a depth of
+     1.
+    """
+
     checkout: str = betterproto.string_field(5)
+    """Checkout is an optional commit or tag to check out after cloning."""
+
     disable_lazy_unshallow: bool = betterproto.bool_field(6)
+    """
+    DisableLazyUnshallow disables Cordium's default behavior of
+     performing a shallow clone for a faster startup and then fetching
+     the full history asynchronously in the background.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecAdditionalRepository(betterproto.Message):
+    """
+    AdditionalRepository is a secondary repository that is cloned alongside
+     the Workspace's primary repository.
+    """
+
     name: str = betterproto.string_field(1)
+    """
+    Name is the name of the additional repository. It must be unique
+     within the spec.
+    """
+
     clone_path: str = betterproto.string_field(2)
+    """
+    ClonePath is the absolute path inside the Workspace where the
+     repository is cloned (e.g.
+     `/workspace/additional-repos/shared-libs`).
+    """
+
     repository: "WorkspaceSpecRepository" = betterproto.message_field(3)
+    """
+    Repository is the repository's URL, clone options and authentication.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntime(betterproto.Message):
+    """
+    Runtime controls the behavior of the Workspace's container (i.e. its
+     environment variables, lifecycle tasks, capabilities, timeout, etc...).
+    """
+
     env_vars: List["WorkspaceSpecRuntimeEnvVar"] = betterproto.message_field(1)
+    """
+    EnvVars is the list of the environment variables that are injected
+     into the Workspace container.
+    """
+
     tasks: List["WorkspaceSpecRuntimeTask"] = betterproto.message_field(2)
+    """Tasks is the list of the lifecycle tasks of the Workspace."""
+
     disable_init: bool = betterproto.bool_field(3)
+    """
+    DisableInit disables the minimal init process that Cordium runs as PID
+     1 in order to reap the zombie processes. It should only be set when
+     the image already contains its own init system.
+    """
+
     cmd: str = betterproto.string_field(4)
+    """Cmd overrides the container image's default command."""
+
     entrypoint: str = betterproto.string_field(5)
+    """Entrypoint overrides the container image's default entrypoint."""
+
     devcontainers: "WorkspaceSpecRuntimeDevcontainers" = betterproto.message_field(6)
+    """Devcontainers is the Development Container-related configuration."""
+
+    octelium: "WorkspaceSpecRuntimeOctelium" = betterproto.message_field(7)
+    """
+    Octelium controls the Octelium Services that are served inside the
+     Workspace.
+    """
+
+    network: "WorkspaceSpecRuntimeNetwork" = betterproto.message_field(8)
+    """Network is the network-related configuration of the Workspace."""
+
+    filesystem: "WorkspaceSpecRuntimeFilesystem" = betterproto.message_field(9)
+    """Filesystem is the container filesystem configuration."""
+
+    capabilities: "WorkspaceSpecRuntimeCapabilities" = betterproto.message_field(10)
+    """Capabilities is the Linux capabilities of the Workspace's container."""
+
+    timeout: "WorkspaceSpecRuntimeTimeout" = betterproto.message_field(11)
+    """Timeout controls the inactivity timeout of the Workspace."""
+
+    auto_stop: bool = betterproto.bool_field(12)
+    """
+    AutoStop automatically stops the Workspace once all of its
+     non-background lifecycle tasks complete. It is mostly useful for CI/CD
+     and automated workloads where no human interaction is expected.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeEnvVar(betterproto.Message):
+    """
+    EnvVar is an environment variable that is injected into the Workspace
+     container as well as into all of its lifecycle tasks.
+    """
+
     key: str = betterproto.string_field(1)
+    """Key is the environment variable's name."""
+
     value: str = betterproto.string_field(2, group="type")
+    """Value is the value provided directly as a string."""
+
     from_secret: str = betterproto.string_field(3, group="type")
+    """
+    FromSecret is the name of a Secret in the same Space whose content
+     is used as the value. It is resolved by the Cluster at
+     initialization time.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeTask(betterproto.Message):
+    """
+    Task is a command that is run at a defined point of the Workspace's
+     lifecycle.
+    """
+
     name: str = betterproto.string_field(1)
+    """
+    Name is a unique name for the Task. It is used in the logs and in
+     the failure reporting.
+    """
+
     run: str = betterproto.string_field(2)
+    """Run is the shell command that is executed by the Task."""
+
     type: "WorkspaceSpecRuntimeTaskType" = betterproto.enum_field(3)
+    """
+    Type is the point of the lifecycle at which the Task is run. It must
+     be set.
+    """
+
     env_vars: List["WorkspaceSpecRuntimeTaskEnvVar"] = betterproto.message_field(4)
+    """EnvVars is the list of per-task environment variables."""
+
     working_dir: str = betterproto.string_field(5)
+    """
+    WorkingDir is the working directory of the Task. It defaults to the
+     Workspace User's home directory.
+    """
+
     is_background: bool = betterproto.bool_field(6)
+    """
+    IsBackground starts the Task and lets the Workspace's initialization
+     proceed without waiting for the Task to complete.
+    """
+
     on_failure: "WorkspaceSpecRuntimeTaskOnFailure" = betterproto.enum_field(7)
+    """
+    OnFailure controls whether a failure of the Task aborts the
+     initialization of the Workspace.
+    """
+
     run_as_root: bool = betterproto.bool_field(8)
+    """RunAsRoot runs the Task as `root` instead of as the Workspace User."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeTaskEnvVar(betterproto.Message):
+    """
+    EnvVar is a per-task environment variable which is merged with the
+     Workspace-level environment variables.
+    """
+
     key: str = betterproto.string_field(1)
+    """Key is the environment variable's name."""
+
     value: str = betterproto.string_field(2)
+    """Value is the environment variable's value."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeDevcontainers(betterproto.Message):
+    """Devcontainers is the Development Container-related configuration."""
+
     features: List["WorkspaceSpecRuntimeDevcontainersFeature"] = (
         betterproto.message_field(1)
     )
+    """
+    Features is the list of the Development Container Features that are
+     installed inside the Workspace. They are merged with the Features
+     that are declared by the repository's own devcontainer spec, if any.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeDevcontainersFeature(betterproto.Message):
+    """
+    Feature is a Development Container Feature that is installed inside
+     the Workspace.
+    """
+
     reference: str = betterproto.string_field(1)
+    """
+    Reference is the OCI reference of the Feature (e.g.
+     `ghcr.io/devcontainers/features/docker-in-docker:2`).
+    """
+
     options: List["WorkspaceSpecRuntimeDevcontainersFeatureOption"] = (
         betterproto.message_field(2)
     )
+    """Options is the list of the Feature's installation options."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeDevcontainersFeatureOption(betterproto.Message):
+    """Option is a Feature-specific installation option."""
+
     key: str = betterproto.string_field(1)
+    """Key is the option's name."""
+
     value: str = betterproto.string_field(2)
+    """Value is the option's value."""
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSpecRuntimeOctelium(betterproto.Message):
+    """
+    Octelium controls the `octelium connect` process that runs inside the
+     Workspace using the Workspace's own dedicated Octelium Session. It is
+     what enables secretless access from inside the Workspace to the
+     Octelium Services that its owner User is authorized to access.
+    """
+
+    serve_services: List[str] = betterproto.string_field(1)
+    """
+    ServeServices is the list of the names of the Octelium Services,
+     among the ones assigned to the owner User, that are served inside
+     the Workspace.
+    """
+
+    serve_all: bool = betterproto.bool_field(2)
+    """
+    ServeAll serves every Octelium Service that is assigned to the owner
+     User inside the Workspace.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSpecRuntimeNetwork(betterproto.Message):
+    """Network is the network-related configuration of the Workspace."""
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSpecRuntimeNetworkRule(betterproto.Message):
+    """Rule is a network rule that matches a set of network ranges."""
+
+    cidrs: List[str] = betterproto.string_field(1)
+    """
+    CIDRs is the list of the network ranges, in CIDR notation, that
+     are matched by the Rule.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSpecRuntimeNetworkEgress(betterproto.Message):
+    """Egress is the egress (i.e. outbound) traffic configuration."""
+
+    rules: List["WorkspaceSpecRuntimeNetworkRule"] = betterproto.message_field(1)
+    """Rules is the list of the egress rules that are evaluated in order."""
+
+    default_action: "WorkspaceSpecRuntimeNetworkRuleAction" = betterproto.enum_field(2)
+    """DefaultAction is the action that is applied when no Rule matches."""
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSpecRuntimeFilesystem(betterproto.Message):
+    """Filesystem is the container filesystem configuration."""
+
+    read_only: bool = betterproto.bool_field(1)
+    """ReadOnly makes the container's root filesystem read-only."""
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSpecRuntimeCapabilities(betterproto.Message):
+    """
+    Capabilities is the Linux capabilities of the Workspace's container.
+     It is merged with the Space-level and the ClusterConfig-level
+     capabilities.
+    """
+
+    add: List[str] = betterproto.string_field(1)
+    """
+    Add is the list of the Linux capabilities that are added (e.g.
+     `NET_ADMIN`).
+    """
+
+    drop: List[str] = betterproto.string_field(2)
+    """
+    Drop is the list of the Linux capabilities that are dropped (e.g.
+     `NET_RAW`).
+    """
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSpecRuntimeTimeout(betterproto.Message):
+    """
+    Timeout controls the inactivity timeout after which a running
+     Workspace is automatically stopped by the Cluster.
+    """
+
+    mode: "WorkspaceSpecRuntimeTimeoutMode" = betterproto.enum_field(1)
+    """Mode is the inactivity timeout mode."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecApplication(betterproto.Message):
+    """
+    Application is a named port inside the Workspace that is exposed via the
+     Cordium portal's reverse proxy.
+    """
+
     name: str = betterproto.string_field(1)
+    """
+    Name is the name of the Application. It must be unique within the spec
+     and it is used as a subdomain prefix of the Workspace's hostname.
+    """
+
     display_name: str = betterproto.string_field(2)
+    """DisplayName is a human-readable name for the Application."""
+
     port: int = betterproto.int32_field(3)
+    """
+    Port is the TCP port that the Application listens on inside the
+     Workspace.
+    """
+
     is_default: bool = betterproto.bool_field(4)
+    """
+    IsDefault serves the Application at the Workspace's root hostname.
+     At most one Application can be the default one.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecLimit(betterproto.Message):
+    """
+    Limit is the compute resources that are allocated for the Workspace. The
+     effective limits are resolved by precedence (i.e. Workspace, Template,
+     Space default and then the Cluster default) and are then capped by the
+     Space and the Cluster maximums.
+    """
+
     cpu: "WorkspaceSpecLimitCpu" = betterproto.message_field(1)
+    """CPU is the CPU allocation."""
+
     memory: "WorkspaceSpecLimitMemory" = betterproto.message_field(2)
+    """Memory is the memory allocation."""
+
     storage: "WorkspaceSpecLimitStorage" = betterproto.message_field(3)
+    """Storage is the storage allocation."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecLimitCpu(betterproto.Message):
+    """CPU is the CPU allocation."""
+
     millicores: int = betterproto.uint32_field(1)
+    """
+    Millicores is the number of CPU millicores (i.e. 1 core equals 1000
+     millicores).
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecLimitMemory(betterproto.Message):
+    """Memory is the memory allocation."""
+
     megabytes: int = betterproto.uint32_field(1)
+    """Megabytes is the amount of memory in megabytes."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecLimitStorage(betterproto.Message):
+    """Storage is the storage allocation."""
+
     megabytes: int = betterproto.uint32_field(2)
+    """Megabytes is the amount of disk storage in megabytes."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecVar(betterproto.Message):
+    """
+    Var is a variable that can be referenced from within the spec's string
+     fields using the `${{ vars.NAME }}` syntax. The substitution is
+     performed after all the configuration levels are merged.
+    """
+
     name: str = betterproto.string_field(1)
+    """Name is the variable's name."""
+
     value: str = betterproto.string_field(2)
+    """Value is the variable's value."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatus(betterproto.Message):
+    """
+    Status is the current status of the Workspace. It is entirely managed by
+     the Cluster and it is read-only.
+    """
+
     state: "WorkspaceStatusState" = betterproto.enum_field(1)
+    """State is the current state of the Workspace's lifecycle."""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    UserRef is the reference of the Octelium User who owns the Workspace.
+    """
+
     session_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(3)
+    """
+    SessionRef is the reference of the dedicated Octelium Session that is
+     created for the current run. It is the Workspace's identity for
+     secretless access to the Cluster's Services and it is deleted once the
+     Workspace is stopped.
+    """
+
     region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(4)
+    """
+    RegionRef is the reference of the Octelium Region that currently hosts
+     the Workspace.
+    """
+
     hostname: str = betterproto.string_field(5)
+    """
+    Hostname is the publicly resolvable hostname of the running Workspace
+     (e.g. `abc.cordium.example.com`). It is unset while the Workspace is
+     stopped.
+    """
+
     last_initialized_at: datetime = betterproto.message_field(6)
+    """
+    LastInitializedAt is the timestamp of the last start request of the
+     Workspace.
+    """
+
     last_activity_at: datetime = betterproto.message_field(7)
+    """
+    LastActivityAt is the timestamp of the last recorded activity of the
+     Workspace. It is what the inactivity timeout is calculated against.
+    """
+
     last_stopped_at: datetime = betterproto.message_field(8)
+    """
+    LastStoppedAt is the timestamp at which the Workspace was last stopped.
+    """
+
     successful_runs: int = betterproto.uint32_field(9)
+    """
+    SuccessfulRuns is the total number of the runs that successfully reached
+     the RUNNING state.
+    """
+
     is_build: bool = betterproto.bool_field(10)
+    """
+    IsBuild means that the Workspace is an internal Workspace that is
+     created by the Cluster in order to carry out a Template pre-build. Such
+     Workspaces are hidden from the Users and they are deleted once the
+     pre-build completes.
+    """
+
     template_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(11)
+    """
+    TemplateRef is the reference of the Template that the Workspace was
+     created from.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(12)
+    """
+    SpaceRef is the reference of the Space that the Workspace belongs to.
+    """
+
     total_last_runs_duration: "__meta_v1__.Duration" = betterproto.message_field(13)
+    """
+    TotalLastRunsDuration is the accumulated running duration of all of the
+     Workspace's runs.
+    """
+
     last_state: "WorkspaceStatusState" = betterproto.enum_field(14)
+    """
+    LastState is the state that the Workspace was in right before the
+     current one.
+    """
+
     current_state_set_at: datetime = betterproto.message_field(15)
+    """
+    CurrentStateSetAt is the timestamp at which the current state was set.
+    """
+
     last_state_set_at: datetime = betterproto.message_field(16)
+    """LastStateSetAt is the timestamp at which the previous state was set."""
+
     last_running_at: datetime = betterproto.message_field(17)
+    """
+    LastRunningAt is the timestamp at which the Workspace last reached the
+     RUNNING state.
+    """
+
     failure: "WorkspaceStatusFailure" = betterproto.message_field(18)
+    """Failure is the failure of the Workspace, if any."""
+
     limit: "WorkspaceSpecLimit" = betterproto.message_field(19)
+    """
+    Limit is the effective compute resource limits that the Cluster resolved
+     for the Workspace after merging and capping all the configuration
+     levels.
+    """
+
     shared_ports: List["WorkspaceStatusSharedPort"] = betterproto.message_field(20)
+    """
+    SharedPorts is the list of the Workspace's Applications that are
+     currently shared with other Users.
+    """
+
     space_type: "SpaceStatusType" = betterproto.enum_field(21)
+    """SpaceType is the type of the Space that the Workspace belongs to."""
+
     stopping_reason: "WorkspaceStatusStoppingReason" = betterproto.enum_field(22)
+    """StoppingReason is the reason of the current or the latest stoppage."""
+
     last_stopping_reason: "WorkspaceStatusStoppingReason" = betterproto.enum_field(23)
-    is_ephemeral: bool = betterproto.bool_field(24)
-    runs: List["WorkspaceStatusRun"] = betterproto.message_field(25)
+    """
+    LastStoppingReason is the reason of the stoppage that preceded the
+     current run.
+    """
+
+    run: "WorkspaceStatusRun" = betterproto.message_field(24)
+    """Run is the current or the latest run of the Workspace."""
+
+    last_runs: List["WorkspaceStatusRun"] = betterproto.message_field(25)
+    """
+    LastRuns is the history of the Workspace's previous runs ordered from
+     the most to the least recent one.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailure(betterproto.Message):
+    """Failure describes the reason of the failure of a Workspace run."""
+
     message: str = betterproto.string_field(1)
+    """Message is a human-readable description of the failure."""
+
     image_build: "WorkspaceStatusFailureImageBuild" = betterproto.message_field(
         2, group="type"
     )
+    """ImageBuild means that building the container image failed."""
+
     image_pull: "WorkspaceStatusFailureImagePull" = betterproto.message_field(
         3, group="type"
     )
+    """ImagePull means that pulling the container image failed."""
+
     repo_clone: "WorkspaceStatusFailureRepoClone" = betterproto.message_field(
         4, group="type"
     )
+    """RepoClone means that cloning the primary repository failed."""
+
     build_timeout_exceeded: "WorkspaceStatusFailureBuildTimeoutExceeded" = (
         betterproto.message_field(5, group="type")
     )
+    """
+    BuildTimeoutExceeded means that the image build did not complete
+     within the allowed duration.
+    """
+
     task: "WorkspaceStatusFailureTask" = betterproto.message_field(6, group="type")
+    """Task means that a lifecycle task failed."""
+
     startup_unknown: "WorkspaceStatusFailureStartupUnknown" = betterproto.message_field(
         7, group="type"
     )
+    """
+    StartupUnknown means that the Workspace failed to start for an
+     undetermined reason.
+    """
+
     startup_timeout_exceeded: "WorkspaceStatusFailureStartupTimeoutExceeded" = (
         betterproto.message_field(8, group="type")
     )
+    """
+    StartupTimeoutExceeded means that the Workspace did not become ready
+     within the allowed duration.
+    """
+
     load_storage: "WorkspaceStatusFailureLoadStorage" = betterproto.message_field(
         9, group="type"
     )
+    """LoadStorage means that loading the persistent storage failed."""
+
     save_storage: "WorkspaceStatusFailureSaveStorage" = betterproto.message_field(
         10, group="type"
     )
+    """SaveStorage means that saving the persistent storage failed."""
+
     stoppage_timeout_exceeded: "WorkspaceStatusFailureStoppageTimeoutExceeded" = (
         betterproto.message_field(11, group="type")
     )
+    """
+    StoppageTimeoutExceeded means that the Workspace did not stop
+     gracefully within the allowed duration.
+    """
+
     run_container: "WorkspaceStatusFailureRunContainer" = betterproto.message_field(
         12, group="type"
     )
+    """RunContainer means that running the Workspace's container failed."""
+
     health_check: "WorkspaceStatusFailureHealthCheck" = betterproto.message_field(
         13, group="type"
     )
+    """HealthCheck means that the Workspace failed its health checks."""
+
     unknown: "WorkspaceStatusFailureUnknown" = betterproto.message_field(
         14, group="type"
     )
+    """Unknown means that the run failed for an unclassified reason."""
+
     additional_repo_clone: "WorkspaceStatusFailureAdditionalRepoClone" = (
         betterproto.message_field(15, group="type")
     )
+    """
+    AdditionalRepoClone means that cloning one of the additional
+     repositories failed.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureImageBuild(betterproto.Message):
+    """ImageBuild means that building the container image failed."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureImagePull(betterproto.Message):
+    """ImagePull means that pulling the container image failed."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureRepoClone(betterproto.Message):
+    """RepoClone means that cloning the primary repository failed."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureRepoCheckout(betterproto.Message):
+    """
+    RepoCheckout means that checking out the requested branch, tag or
+     commit of the primary repository failed.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureBuildTimeoutExceeded(betterproto.Message):
+    """
+    BuildTimeoutExceeded means that the image build did not complete
+     within the allowed duration.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureTask(betterproto.Message):
+    """
+    Task means that a lifecycle task failed while its onFailure was set to
+     abort the initialization.
+    """
+
     name: str = betterproto.string_field(1)
+    """Name is the name of the failed Task."""
+
     exit_code: int = betterproto.int32_field(2)
+    """ExitCode is the exit code with which the Task's command exited."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureStartupUnknown(betterproto.Message):
+    """
+    StartupUnknown means that the Workspace failed to start for an
+     undetermined reason.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureStartupTimeoutExceeded(betterproto.Message):
+    """
+    StartupTimeoutExceeded means that the Workspace did not become ready
+     within the allowed duration.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureLoadStorage(betterproto.Message):
+    """
+    LoadStorage means that loading the Workspace's persistent storage
+     failed.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureSaveStorage(betterproto.Message):
+    """
+    SaveStorage means that saving the Workspace's persistent storage
+     failed.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureStoppageTimeoutExceeded(betterproto.Message):
+    """
+    StoppageTimeoutExceeded means that the Workspace did not stop
+     gracefully within the allowed duration.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureRunContainer(betterproto.Message):
+    """RunContainer means that running the Workspace's container failed."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureHealthCheck(betterproto.Message):
+    """HealthCheck means that the Workspace failed its health checks."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureUnknown(betterproto.Message):
+    """Unknown means that the run failed for an unclassified reason."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailureAdditionalRepoClone(betterproto.Message):
+    """
+    AdditionalRepoClone means that cloning one of the additional
+     repositories failed.
+    """
+
     name: str = betterproto.string_field(1)
+    """
+    Name is the name of the additional repository that failed to be
+     cloned.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusSharedPort(betterproto.Message):
+    """
+    SharedPort is a named Application of the Workspace that is shared with
+     other Users. It is set via the ShareWorkspacePort method.
+    """
+
     mode: "WorkspaceStatusSharedPortMode" = betterproto.enum_field(1)
+    """Mode is the audience with which the Application is shared."""
+
     application_name: str = betterproto.string_field(2)
+    """
+    ApplicationName is the name of the shared Application as it is defined
+     in the Workspace's spec.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusRun(betterproto.Message):
+    """
+    Run is a single run of the Workspace (i.e. the period spanning from a
+     start request until the Workspace is stopped).
+    """
+
     id: str = betterproto.string_field(1)
+    """ID is a randomly generated identifier of the run."""
+
     initialized_at: datetime = betterproto.message_field(2)
+    """InitializedAt is the timestamp at which the run was initialized."""
+
     stopped_at: datetime = betterproto.message_field(3)
+    """StoppedAt is the timestamp at which the run was stopped."""
+
     failure: "WorkspaceStatusFailure" = betterproto.message_field(4)
+    """Failure is set when the run failed."""
+
+    config: "StartWorkspaceRequestConfig" = betterproto.message_field(5)
+    """
+    Config is the run-specific configuration that was supplied with the
+     start request.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceList(betterproto.Message):
+    """WorkspaceList is the response of the ListWorkspace method."""
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `WorkspaceList`)."""
+
     items: List["Workspace"] = betterproto.message_field(3)
+    """Items is the list of Workspaces."""
+
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
 
 
 @dataclass(eq=False, repr=False)
 class ListWorkspaceOptions(betterproto.Message):
+    """
+    ListWorkspaceOptions is the request of the ListWorkspace method. The
+     returned Workspaces are always restricted to the ones that are owned by the
+     calling User.
+    """
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
         2, group="filter"
     )
+    """SpaceRef returns only the Workspaces that belong to this Space."""
+
     template_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
         3, group="filter"
     )
+    """
+    TemplateRef returns only the Workspaces that belong to this Template.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class Secret(betterproto.Message):
+    """
+    Secret is a sensitive value (e.g. an API key, a token, a password or a
+     certificate) that is stored inside a Space. Secrets are referenced by name
+     from the Workspace and Template specs (e.g. as the source of an environment
+     variable, of a registry password or of a repository password). Their content
+     is resolved by the Cluster at initialization time and it is never returned
+     back by the API once the Secret is created.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version of the object."""
 
@@ -580,530 +1679,1318 @@ class Secret(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SecretSpec(betterproto.Message):
+    """Spec is the Secret specification. It is intentionally empty."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class SecretStatus(betterproto.Message):
+    """
+    Status is the current status of the Secret. It is managed by the Cluster
+     and it is read-only.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """SpaceRef is the reference of the Space that owns the Secret."""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    UserRef is the reference of the Octelium User who created the Secret.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SecretData(betterproto.Message):
+    """
+    Data is the Secret's sensitive content. It is write-only (i.e. it can only
+     be set at creation time and it is never returned back by the API).
+    """
+
     value: str = betterproto.string_field(1, group="type")
+    """Value is the content provided as a string."""
+
     value_bytes: bytes = betterproto.bytes_field(2, group="type")
+    """ValueBytes is the content provided as raw bytes."""
+
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(
         3, group="type"
     )
+    """Attrs is the content provided as a structured map of attributes."""
 
 
 @dataclass(eq=False, repr=False)
 class ListSecretOptions(betterproto.Message):
+    """ListSecretOptions is the request of the ListSecret method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """SpaceRef is the reference of the Space whose Secrets are listed."""
 
 
 @dataclass(eq=False, repr=False)
 class SecretList(betterproto.Message):
+    """
+    SecretList is the response of the ListSecret method. The Secrets' data is
+     not included.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `SecretList`)."""
+
     items: List["Secret"] = betterproto.message_field(3)
+    """Items is the list of Secrets."""
+
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
 
 
 @dataclass(eq=False, repr=False)
 class ClientMessage(betterproto.Message):
+    """
+    ClientMessage is the envelope of the messages that are sent by the client
+     over the Cordium portal's bidirectional WebSocket connection. It multiplexes
+     the terminal operations of several Workspaces over a single connection.
+    """
+
     write_terminal_data_request: "WriteTerminalDataRequest" = betterproto.message_field(
         1, group="type"
     )
+    """WriteTerminalDataRequest writes data (i.e. stdin) to a terminal."""
+
     set_terminal_window_size_request: "SetTerminalWindowSizeRequest" = (
         betterproto.message_field(2, group="type")
     )
+    """SetTerminalWindowSizeRequest resizes a terminal's window."""
+
     listen_terminal_request: "ListenTerminalRequest" = betterproto.message_field(
         3, group="type"
     )
+    """ListenTerminalRequest starts listening to a terminal's output."""
+
     listen_terminal_end_request: "ClientMessageListenTerminalEndRequest" = (
         betterproto.message_field(4, group="type")
     )
+    """ListenTerminalEndRequest stops listening to a terminal's output."""
 
 
 @dataclass(eq=False, repr=False)
 class ClientMessageListenTerminalEndRequest(betterproto.Message):
+    """
+    ListenTerminalEndRequest stops listening to a terminal's output without
+     terminating the terminal itself.
+    """
+
     id: str = betterproto.string_field(1)
+    """ID is the ID of the terminal to stop listening to."""
 
 
 @dataclass(eq=False, repr=False)
 class ServerMessage(betterproto.Message):
+    """
+    ServerMessage is the envelope of the messages that are sent by the server
+     over the Cordium portal's bidirectional WebSocket connection.
+    """
+
     workspace_update: "ServerMessageWorkspaceUpdate" = betterproto.message_field(
         1, group="type"
     )
+    """WorkspaceUpdate publishes the current state of a Workspace."""
+
     listen_terminal_event: "ServerMessageListenTerminalEvent" = (
         betterproto.message_field(2, group="type")
     )
+    """ListenTerminalEvent publishes an output event of a terminal."""
 
 
 @dataclass(eq=False, repr=False)
 class ServerMessageWorkspaceUpdate(betterproto.Message):
+    """
+    WorkspaceUpdate publishes the current state of one of the User's
+     Workspaces.
+    """
+
     workspace: "Workspace" = betterproto.message_field(1)
+    """Workspace is the updated Workspace."""
 
 
 @dataclass(eq=False, repr=False)
 class ServerMessageListenTerminalEvent(betterproto.Message):
+    """
+    ListenTerminalEvent publishes an output event of a terminal that the
+     client is listening to.
+    """
+
     id: str = betterproto.string_field(1)
+    """ID is the ID of the terminal that the event belongs to."""
+
     listen_terminal_response: "ListenTerminalResponse" = betterproto.message_field(2)
+    """ListenTerminalResponse is the terminal's output event."""
 
 
 @dataclass(eq=False, repr=False)
 class StartWorkspaceRequest(betterproto.Message):
+    """StartWorkspaceRequest is the request of the StartWorkspace method."""
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """WorkspaceRef is the reference of the Workspace to be started."""
+
+    config: "StartWorkspaceRequestConfig" = betterproto.message_field(3)
+    """Config is the run-specific configuration of the run being started."""
+
+
+@dataclass(eq=False, repr=False)
+class StartWorkspaceRequestConfig(betterproto.Message):
+    """
+    Config is the run-specific configuration that only applies to the run
+     being started.
+    """
+
+    vars: List["WorkspaceSpecVar"] = betterproto.message_field(1)
+    """
+    Vars is the list of the variables that override the Workspace's own
+     variables for this run.
+    """
+
     region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    RegionRef is the reference of the Region that is chosen to host the run.
+     If it is unset, the Cluster picks a Region on its own, preferring the
+     User's preferred Region if it is set in their UserConfig.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class StartWorkspaceResponse(betterproto.Message):
+    """
+    StartWorkspaceResponse is the response of the StartWorkspace method. It is
+     intentionally empty since the start itself is asynchronous.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class StopWorkspaceRequest(betterproto.Message):
+    """StopWorkspaceRequest is the request of the StopWorkspace method."""
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """WorkspaceRef is the reference of the Workspace to be stopped."""
 
 
 @dataclass(eq=False, repr=False)
 class StopWorkspaceResponse(betterproto.Message):
+    """
+    StopWorkspaceResponse is the response of the StopWorkspace method. It is
+     intentionally empty since the stoppage itself is asynchronous.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class Template(betterproto.Message):
+    """
+    Template is a reusable Workspace configuration inside a Space. Every
+     Workspace is created from a Template and it inherits its spec. Every Space
+     has a `default` Template that is automatically created along with it. A
+     Template can additionally be associated with a GitProvider and it can be
+     pre-built so that its Workspaces start from a ready-made storage snapshot.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `Template`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "TemplateSpec" = betterproto.message_field(4)
+    """Spec is the Template specification."""
+
     status: "TemplateStatus" = betterproto.message_field(5)
+    """Status is the current status of the Template."""
 
 
 @dataclass(eq=False, repr=False)
 class TemplateSpec(betterproto.Message):
+    """
+    Spec is the Template specification. It shares most of the Workspace spec.
+    """
+
     image: "WorkspaceSpecImage" = betterproto.message_field(1)
+    """
+    Image defines how the container image of the Template's Workspaces is
+     obtained.
+    """
+
     runtime: "WorkspaceSpecRuntime" = betterproto.message_field(2)
+    """
+    Runtime controls the behavior of the container of the Template's
+     Workspaces.
+    """
+
     repository: "WorkspaceSpecRepository" = betterproto.message_field(3)
+    """
+    Repository is the primary git repository which is cloned into the
+     Template's Workspaces.
+    """
+
     additional_repositories: List["WorkspaceSpecAdditionalRepository"] = (
         betterproto.message_field(4)
     )
+    """
+    AdditionalRepositories is the list of the secondary repositories that
+     are cloned alongside the primary one.
+    """
+
     limit: "WorkspaceSpecLimit" = betterproto.message_field(5)
+    """
+    Limit is the default compute resources that are allocated for the
+     Template's Workspaces.
+    """
+
     git_provider: str = betterproto.string_field(6)
+    """
+    GitProvider is the name of a GitProvider in the same Space. Once it is
+     set, the User's stored OAuth2 token is automatically injected into the
+     Template's Workspaces which enables authenticated git operations without
+     any manual credential configuration.
+    """
+
     vars: List["WorkspaceSpecVar"] = betterproto.message_field(7)
+    """
+    Vars is the list of the variables that are substituted inside the spec.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class TemplateStatus(betterproto.Message):
+    """
+    Status is the current status of the Template. It is managed by the Cluster
+     and it is read-only.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """SpaceRef is the reference of the Space that owns the Template."""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    UserRef is the reference of the Octelium User who created the Template.
+    """
+
     git_provider_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(3)
+    """
+    GitProviderRef is the reference of the GitProvider that is associated
+     with the Template via the spec's gitProvider field.
+    """
+
     build_info: "TemplateStatusBuildInfo" = betterproto.message_field(4)
+    """BuildInfo is the state of the Template's pre-builds."""
 
 
 @dataclass(eq=False, repr=False)
 class TemplateStatusBuildInfo(betterproto.Message):
+    """BuildInfo is the state of the Template's pre-builds."""
+
     builds: List["TemplateStatusBuildInfoBuild"] = betterproto.message_field(1)
+    """
+    Builds is the history of the Template's pre-builds ordered from the
+     most to the least recent one.
+    """
+
     current_ready_build_id: str = betterproto.string_field(2)
+    """
+    CurrentReadyBuildID is the ID of the pre-build whose storage snapshot
+     the new Workspaces of the Template are currently restored from.
+    """
+
     current_running_build_id: str = betterproto.string_field(3)
+    """
+    CurrentRunningBuildID is the ID of the pre-build that is currently
+     running, if any.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class TemplateStatusBuildInfoBuild(betterproto.Message):
+    """Build is a single pre-build of the Template."""
+
     id: str = betterproto.string_field(1)
+    """ID is a randomly generated identifier of the pre-build."""
+
     tags: List[str] = betterproto.string_field(2)
+    """
+    Tags is the list of the tags that the pre-build was started with. It
+     defaults to `latest`.
+    """
+
     started_at: datetime = betterproto.message_field(3)
+    """StartedAt is the timestamp at which the pre-build started."""
+
     done_at: datetime = betterproto.message_field(4)
+    """
+    DoneAt is the timestamp at which the pre-build completed, failed or
+     was canceled.
+    """
+
     is_canceled: bool = betterproto.bool_field(5)
+    """
+    IsCanceled means that the pre-build was explicitly canceled (e.g.
+     via the CancelBuildTemplate method or by starting a new pre-build).
+    """
+
     failure: "WorkspaceStatusFailure" = betterproto.message_field(6)
+    """Failure is the reason of the failure of the pre-build, if any."""
+
     state: "TemplateStatusBuildInfoBuildState" = betterproto.enum_field(7)
+    """State is the current state of the pre-build."""
 
 
 @dataclass(eq=False, repr=False)
 class TemplateList(betterproto.Message):
+    """TemplateList is the response of the ListTemplate method."""
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `TemplateList`)."""
+
     items: List["Template"] = betterproto.message_field(3)
+    """Items is the list of Templates."""
+
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
 
 
 @dataclass(eq=False, repr=False)
 class ListTemplateOptions(betterproto.Message):
+    """ListTemplateOptions is the request of the ListTemplate method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """SpaceRef is the reference of the Space whose Templates are listed."""
 
 
 @dataclass(eq=False, repr=False)
 class BuildTemplateRequest(betterproto.Message):
+    """BuildTemplateRequest is the request of the BuildTemplate method."""
+
     template_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """TemplateRef is the reference of the Template to be pre-built."""
+
     tags: List[str] = betterproto.string_field(2)
+    """
+    Tags is the list of the tags that are assigned to the pre-build. It
+     defaults to `latest`.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class Space(betterproto.Message):
+    """
+    Space is the top-level namespace of Cordium. It groups the Templates,
+     Workspaces, Secrets, GitProviders and Memberships under a single
+     organizational unit. A `default` Space is automatically created for a User
+     upon the creation of their first Workspace. A Space can define runtime
+     configuration that cascades down to all of its Workspaces as well as the
+     default and the maximum resource limits of its Workspaces.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `Space`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "SpaceSpec" = betterproto.message_field(4)
+    """Spec is the Space specification."""
+
     status: "SpaceStatus" = betterproto.message_field(5)
+    """Status is the current status of the Space."""
 
 
 @dataclass(eq=False, repr=False)
 class SpaceSpec(betterproto.Message):
+    """Spec is the Space specification"""
+
     limit: "SpaceSpecLimit" = betterproto.message_field(1)
+    """
+    Limit is the default and the maximum compute resources of the Space's
+     Workspaces.
+    """
+
     runtime: "SpaceSpecRuntime" = betterproto.message_field(2)
+    """
+    Runtime is the runtime configuration that cascades down to every
+     Workspace of the Space.
+    """
+
     authorization: "SpaceSpecAuthorization" = betterproto.message_field(3)
+    """
+    Authorization is the access control configuration of the Space's
+     Workspaces.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SpaceSpecLimit(betterproto.Message):
+    """
+    Limit is the default and the maximum compute resources of the Space's
+     Workspaces. It can only be set for ORGANIZATION Spaces.
+    """
+
     default_limit: "WorkspaceSpecLimit" = betterproto.message_field(1)
+    """
+    DefaultLimit is the limits that are applied to the Workspaces of the
+     Space that do not define their own limits.
+    """
+
     max_limit: "WorkspaceSpecLimit" = betterproto.message_field(2)
+    """MaxLimit is a hard cap that no Workspace of the Space can exceed."""
 
 
 @dataclass(eq=False, repr=False)
 class SpaceSpecRuntime(betterproto.Message):
+    """
+    Runtime is the runtime configuration that cascades down to every
+     Workspace of the Space regardless of its Template.
+    """
+
     env_vars: List["WorkspaceSpecRuntimeEnvVar"] = betterproto.message_field(1)
+    """
+    EnvVars is the list of the environment variables that are injected
+     into every Workspace of the Space. Secret-sourced environment
+     variables can only be used in ORGANIZATION Spaces.
+    """
+
     tasks: List["WorkspaceSpecRuntimeTask"] = betterproto.message_field(2)
+    """
+    Tasks is the list of the lifecycle tasks that are run in every
+     Workspace of the Space.
+    """
+
+    capabilities: "WorkspaceSpecRuntimeCapabilities" = betterproto.message_field(3)
+    """
+    Capabilities is the Linux capabilities that are merged into every
+     Workspace of the Space.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class SpaceSpecAuthorization(betterproto.Message):
+    """
+    Authorization is the access control configuration of the Space's
+     Workspaces.
+    """
+
     disable_ssh: bool = betterproto.bool_field(1)
+    """DisableSSH denies SSH access to the Workspaces of the Space."""
 
 
 @dataclass(eq=False, repr=False)
 class SpaceStatus(betterproto.Message):
+    """
+    Status is the current status of the Space. It is managed by the Cluster
+     and it is read-only.
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """UserRef is the reference of the Octelium User who created the Space."""
+
     type: "SpaceStatusType" = betterproto.enum_field(2)
+    """Type is the type of the Space."""
 
 
 @dataclass(eq=False, repr=False)
 class SpaceList(betterproto.Message):
+    """SpaceList is the response of the ListSpace method."""
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `SpaceList`)."""
+
     items: List["Space"] = betterproto.message_field(3)
+    """Items is the list of Spaces."""
+
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
 
 
 @dataclass(eq=False, repr=False)
 class ListSpaceOptions(betterproto.Message):
+    """ListSpaceOptions is the request of the ListSpace method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
+
     type: "SpaceStatusType" = betterproto.enum_field(2)
+    """Type optionally lists only the Spaces of this type."""
+
     mode: "ListSpaceOptionsMode" = betterproto.enum_field(3)
+    """
+    Mode is the relationship between the calling User and the listed Spaces.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class Membership(betterproto.Message):
+    """
+    Membership binds an Octelium User to a Space with a specific Role. It is the
+     resource that grants a User access to the Space's Templates, Workspaces,
+     Secrets and GitProviders. A Membership with the OWNER Role is automatically
+     created for the User who creates a Space.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `Membership`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "MembershipSpec" = betterproto.message_field(4)
+    """Spec is the Membership specification."""
+
     status: "MembershipStatus" = betterproto.message_field(5)
+    """Status is the current status of the Membership."""
 
 
 @dataclass(eq=False, repr=False)
 class MembershipSpec(betterproto.Message):
+    """Spec is the Membership specification"""
+
     role: "MembershipSpecRole" = betterproto.enum_field(1)
+    """Role is the level of access that the Member has inside the Space."""
 
 
 @dataclass(eq=False, repr=False)
 class MembershipStatus(betterproto.Message):
+    """
+    Status is the current status of the Membership. It is managed by the
+     Cluster and it is read-only.
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    UserRef is the reference of the Octelium User that the Membership
+     belongs to.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    SpaceRef is the reference of the Space that the Membership belongs to.
+    """
+
     user_info: "MembershipStatusUserInfo" = betterproto.message_field(3)
+    """UserInfo is the human-readable information about the Member."""
+
     git_provider_state_map: Dict[str, "MembershipStatusGitProviderState"] = (
         betterproto.map_field(4, betterproto.TYPE_STRING, betterproto.TYPE_MESSAGE)
     )
+    """
+    GitProviderStateMap is the map of the in-flight GitProvider OAuth2
+     authorization flows of the Member keyed by the UID of the Workspace that
+     each flow was initiated for. It is internal to the Cluster and it is
+     never exposed by the Membership methods.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class MembershipStatusGitProviderState(betterproto.Message):
+    """
+    GitProviderState is the state of an in-flight GitProvider OAuth2
+     authorization flow that was initiated for a specific Workspace.
+    """
+
     git_provider_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    GitProviderRef is the reference of the GitProvider that the flow
+     authenticates against.
+    """
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    WorkspaceRef is the reference of the Workspace that the flow was
+     initiated for.
+    """
+
     created_at: datetime = betterproto.message_field(3)
+    """
+    CreatedAt is the timestamp at which the flow was initiated. The state
+     is short-lived and it is discarded once it expires.
+    """
+
     state_id: str = betterproto.string_field(4)
+    """
+    StateID is the randomly generated value that is used as the OAuth2
+     `state` parameter in order to protect the flow against CSRF.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class MembershipStatusUserInfo(betterproto.Message):
+    """
+    UserInfo is the human-readable information about the Member which is
+     copied from the Octelium User in order to be displayed alongside the
+     Membership.
+    """
+
     display_name: str = betterproto.string_field(1)
+    """DisplayName is the Member's display name."""
+
     pic_url: str = betterproto.string_field(2)
+    """PicURL is the URL of the Member's picture."""
 
 
 @dataclass(eq=False, repr=False)
 class MembershipList(betterproto.Message):
+    """MembershipList is the response of the ListMembership method."""
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `MembershipList`)."""
+
     items: List["Membership"] = betterproto.message_field(3)
+    """Items is the list of Memberships."""
+
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
 
 
 @dataclass(eq=False, repr=False)
 class ListMembershipOptions(betterproto.Message):
+    """ListMembershipOptions is the request of the ListMembership method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """SpaceRef is the reference of the Space whose Memberships are listed."""
 
 
 @dataclass(eq=False, repr=False)
 class CreateMembershipRequest(betterproto.Message):
+    """
+    CreateMembershipRequest is the request of the CreateMembership method.
+    """
+
     role: "CreateMembershipRequestRole" = betterproto.enum_field(1)
+    """
+    Role is the level of access that the new Member has inside the Space. It
+     defaults to USER.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """SpaceRef is the reference of the Space to add the Member to."""
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
         3, group="userType"
     )
+    """UserRef is the reference of the Octelium User to be added."""
+
     email: str = betterproto.string_field(4, group="userType")
+    """
+    Email is the email address of the Octelium User to be added. The User
+     must already exist in the Cluster.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GitProvider(betterproto.Message):
+    """
+    GitProvider configures OAuth2 authentication against a git hosting service
+     (i.e. GitHub, GitLab or a generic OAuth2 provider) inside a Space. Once a
+     GitProvider is attached to a Template, the User's stored OAuth2 token is
+     automatically injected into the Workspaces of that Template which enables
+     `git clone`, `git push` and the other authenticated operations without any
+     manual credential configuration.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `GitProvider`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "GitProviderSpec" = betterproto.message_field(4)
+    """Spec is the GitProvider specification."""
+
     status: "GitProviderStatus" = betterproto.message_field(5)
+    """Status is the current status of the GitProvider."""
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderSpec(betterproto.Message):
+    """Spec is the GitProvider specification"""
+
     github: "GitProviderSpecGithub" = betterproto.message_field(2, group="type")
+    """Github is the GitHub OAuth2 provider."""
+
     gitlab: "GitProviderSpecGitlab" = betterproto.message_field(3, group="type")
+    """Gitlab is the GitLab OAuth2 provider."""
+
     oauth2: "GitProviderSpecOAuth2" = betterproto.message_field(4, group="type")
+    """OAuth2 is a generic OAuth2 provider."""
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderSpecGithub(betterproto.Message):
+    """Github is the GitHub OAuth2 provider."""
+
     client_id: str = betterproto.string_field(1)
+    """ClientID is the OAuth2 application's client ID."""
+
     client_secret: "GitProviderSpecGithubClientSecret" = betterproto.message_field(2)
+    """ClientSecret is the OAuth2 application's client secret."""
+
     scopes: List[str] = betterproto.string_field(3)
+    """
+    Scopes is the list of the OAuth2 scopes that are requested from the
+     provider (e.g. `repo`).
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderSpecGithubClientSecret(betterproto.Message):
+    """ClientSecret is the OAuth2 application's client secret."""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret is the name of a Secret in the same Space whose content
+     is used as the client secret.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderSpecGitlab(betterproto.Message):
+    """Gitlab is the GitLab OAuth2 provider."""
+
     client_id: str = betterproto.string_field(1)
+    """ClientID is the OAuth2 application's client ID."""
+
     client_secret: "GitProviderSpecGitlabClientSecret" = betterproto.message_field(2)
+    """ClientSecret is the OAuth2 application's client secret."""
+
     scopes: List[str] = betterproto.string_field(3)
+    """
+    Scopes is the list of the OAuth2 scopes that are requested from the
+     provider (e.g. `read_repository`).
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderSpecGitlabClientSecret(betterproto.Message):
+    """ClientSecret is the OAuth2 application's client secret."""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret is the name of a Secret in the same Space whose content
+     is used as the client secret.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderSpecOAuth2(betterproto.Message):
+    """
+    OAuth2 is a generic OAuth2 provider for the self-hosted and the other
+     git hosting services.
+    """
+
     client_id: str = betterproto.string_field(1)
+    """ClientID is the OAuth2 application's client ID."""
+
     client_secret: "GitProviderSpecOAuth2ClientSecret" = betterproto.message_field(2)
+    """ClientSecret is the OAuth2 application's client secret."""
+
     auth_url: str = betterproto.string_field(3)
+    """AuthURL is the provider's authorization endpoint URL."""
+
     token_url: str = betterproto.string_field(4)
+    """TokenURL is the provider's token endpoint URL."""
+
     scopes: List[str] = betterproto.string_field(5)
+    """
+    Scopes is the list of the OAuth2 scopes that are requested from the
+     provider. At least one scope must be provided.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderSpecOAuth2ClientSecret(betterproto.Message):
+    """ClientSecret is the OAuth2 application's client secret."""
+
     from_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromSecret is the name of a Secret in the same Space whose content
+     is used as the client secret.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderStatus(betterproto.Message):
+    """
+    Status is the current status of the GitProvider. It is managed by the
+     Cluster and it is read-only.
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    UserRef is the reference of the Octelium User who created the
+     GitProvider.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """SpaceRef is the reference of the Space that owns the GitProvider."""
 
 
 @dataclass(eq=False, repr=False)
 class GitProviderList(betterproto.Message):
+    """GitProviderList is the response of the ListGitProvider method."""
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `GitProviderList`)."""
+
     items: List["GitProvider"] = betterproto.message_field(3)
+    """Items is the list of GitProviders."""
+
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
 
 
 @dataclass(eq=False, repr=False)
 class ListGitProviderOptions(betterproto.Message):
+    """ListGitProviderOptions is the request of the ListGitProvider method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    SpaceRef is the reference of the Space whose GitProviders are listed.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class UserSecret(betterproto.Message):
+    """
+    UserSecret is a sensitive value that is scoped to its owner Octelium User
+     rather than to a Space. UserSecrets are used as the value source of the
+     UserConfig environment variables as well as for the dotfiles repository
+     authentication. Their content is never returned back by the API.
+    """
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version of the object."""
 
     kind: str = betterproto.string_field(2)
-    """Kind is the resource name (i.e. `Secret`)."""
+    """Kind is the resource name (i.e. `UserSecret`)."""
 
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
     """octelium.api.main.meta.v1.Metadata is the object's metadata."""
 
     spec: "UserSecretSpec" = betterproto.message_field(4)
-    """Spec is the Secret specification."""
+    """Spec is the UserSecret specification."""
 
     status: "UserSecretStatus" = betterproto.message_field(5)
-    """Status is the current status of the Secret."""
+    """Status is the current status of the UserSecret."""
 
     data: "UserSecretData" = betterproto.message_field(6)
-    """Data is the Secret data content."""
+    """Data is the UserSecret data content."""
 
 
 @dataclass(eq=False, repr=False)
 class UserSecretSpec(betterproto.Message):
+    """Spec is the UserSecret specification"""
+
     type: "UserSecretSpecType" = betterproto.enum_field(1)
+    """Type is the kind of the UserSecret's content."""
 
 
 @dataclass(eq=False, repr=False)
 class UserSecretStatus(betterproto.Message):
+    """
+    Status is the current status of the UserSecret. It is managed by the
+     Cluster and it is read-only.
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    UserRef is the reference of the Octelium User who owns the UserSecret.
+    """
+
     ssh_key: "UserSecretStatusSshKey" = betterproto.message_field(3, group="details")
+    """SSHKey is set for the UserSecrets of the SSH_KEY type."""
 
 
 @dataclass(eq=False, repr=False)
 class UserSecretStatusSshKey(betterproto.Message):
+    """SSHKey is the public part of a generated SSH_KEY UserSecret."""
+
     public_key: str = betterproto.string_field(1)
+    """PublicKey is the OpenSSH-formatted public key."""
 
 
 @dataclass(eq=False, repr=False)
 class UserSecretData(betterproto.Message):
+    """
+    Data is the UserSecret's sensitive content. It is write-only (i.e. it can
+     only be set at creation time and it is never returned back by the API).
+     For the UserSecrets of the SSH_KEY type it is generated by the Cluster.
+    """
+
     value: str = betterproto.string_field(1, group="type")
+    """Value is the content provided as a string."""
+
     value_bytes: bytes = betterproto.bytes_field(2, group="type")
+    """ValueBytes is the content provided as raw bytes."""
+
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(
         3, group="type"
     )
+    """Attrs is the content provided as a structured map of attributes."""
 
 
 @dataclass(eq=False, repr=False)
 class ListUserSecretOptions(betterproto.Message):
+    """
+    ListUserSecretOptions is the request of the ListUserSecret method. Only the
+     UserSecrets that are owned by the calling User are returned.
+    """
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class UserSecretList(betterproto.Message):
+    """
+    UserSecretList is the response of the ListUserSecret method. The
+     UserSecrets' data is not included.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `UserSecretList`)."""
+
     items: List["UserSecret"] = betterproto.message_field(3)
+    """Items is the list of UserSecrets."""
+
     list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
     """ListResponseMeta is common information about the list."""
 
 
 @dataclass(eq=False, repr=False)
 class GetSpaceMembershipRequest(betterproto.Message):
+    """
+    GetSpaceMembershipRequest is the request of the GetSpaceMembership method.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    SpaceRef is the reference of the Space whose Membership of the calling
+     User is retrieved.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class UserConfig(betterproto.Message):
+    """
+    UserConfig is the per-User configuration that is applied to all of the
+     User's Workspaces regardless of their Space or Template. There is exactly
+     one UserConfig per Octelium User and it is automatically created by the
+     Cluster upon its first use.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `UserConfig`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "UserConfigSpec" = betterproto.message_field(4)
+    """Spec is the UserConfig specification."""
+
     status: "UserConfigStatus" = betterproto.message_field(5)
+    """Status is the current status of the UserConfig."""
 
 
 @dataclass(eq=False, repr=False)
 class UserConfigSpec(betterproto.Message):
+    """Spec is the UserConfig specification"""
+
     dotfiles: "UserConfigSpecDotfiles" = betterproto.message_field(1)
+    """Dotfiles is the User's personal dotfiles repository."""
+
     env_vars: List["UserConfigSpecEnvVar"] = betterproto.message_field(2)
+    """
+    EnvVars is the list of the environment variables that are injected into
+     every Workspace of the User.
+    """
+
     tasks: List["WorkspaceSpecRuntimeTask"] = betterproto.message_field(3)
+    """
+    Tasks is the list of the personal lifecycle tasks that are run in every
+     Workspace of the User. They are run after the Template-level and the
+     Space-level tasks.
+    """
+
     preferred_region: str = betterproto.string_field(4)
+    """
+    PreferredRegion is the name of the Octelium Region in which the User's
+     Workspaces are preferably run. The Region must be enabled to host
+     Workspaces.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class UserConfigSpecDotfiles(betterproto.Message):
+    """
+    Dotfiles is a git repository containing the User's personal dotfiles. It
+     is cloned into the Workspace at the beginning of the PREPARING phase and
+     the first install script that is found in it is executed.
+    """
+
     url: str = betterproto.string_field(1)
+    """URL is the HTTPS URL of the dotfiles git repository."""
+
     authentication: "UserConfigSpecDotfilesAuthentication" = betterproto.message_field(
         2
     )
+    """Authentication is set for the private dotfiles repositories."""
+
     branch: str = betterproto.string_field(3)
+    """
+    Branch is the branch of the dotfiles repository to be cloned. It
+     defaults to the repository's default branch.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class UserConfigSpecDotfilesAuthentication(betterproto.Message):
+    """
+    Authentication is the credentials that are used to clone a private
+     dotfiles repository.
+    """
+
     http: "UserConfigSpecDotfilesAuthenticationHttp" = betterproto.message_field(
         1, group="type"
     )
+    """HTTP is the HTTP basic authentication."""
 
 
 @dataclass(eq=False, repr=False)
 class UserConfigSpecDotfilesAuthenticationHttp(betterproto.Message):
+    """HTTP is the HTTP basic authentication credentials."""
+
     username: str = betterproto.string_field(1)
+    """Username is the basic authentication username."""
+
     password: "UserConfigSpecDotfilesAuthenticationHttpPassword" = (
         betterproto.message_field(2)
     )
+    """Password is the basic authentication password."""
 
 
 @dataclass(eq=False, repr=False)
 class UserConfigSpecDotfilesAuthenticationHttpPassword(betterproto.Message):
+    """Password is the password, token or personal access token."""
+
     from_user_secret: str = betterproto.string_field(1, group="type")
+    """
+    FromUserSecret is the name of a UserSecret of the same User
+     whose content is used as the password.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class UserConfigSpecEnvVar(betterproto.Message):
+    """
+    EnvVar is an environment variable that is injected into every Workspace
+     of the User.
+    """
+
     key: str = betterproto.string_field(1)
+    """Key is the environment variable's name."""
+
     value: str = betterproto.string_field(2, group="type")
+    """Value is the value provided directly as a string."""
+
     from_user_secret: str = betterproto.string_field(3, group="type")
+    """
+    FromUserSecret is the name of a UserSecret of the same User whose
+     content is used as the value.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class UserConfigStatus(betterproto.Message):
+    """
+    Status is the current status of the UserConfig. It is managed by the
+     Cluster and it is read-only.
+    """
+
     user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    UserRef is the reference of the Octelium User who owns the UserConfig.
+    """
+
     preferred_region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    PreferredRegionRef is the reference of the Region that the spec's
+     preferredRegion resolves to.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class GetUserConfigRequest(betterproto.Message):
+    """
+    GetUserConfigRequest is the request of the GetUserConfig method. It is
+     intentionally empty since the UserConfig of the calling User is always the
+     one that is returned.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ShareWorkspacePortRequest(betterproto.Message):
+    """
+    ShareWorkspacePortRequest is the request of the ShareWorkspacePort method.
+    """
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    WorkspaceRef is the reference of the Workspace that owns the Application.
+    """
+
     mode: "ShareWorkspacePortRequestMode" = betterproto.enum_field(2)
+    """Mode is the audience with which the Application is shared."""
+
     application_name: str = betterproto.string_field(3)
+    """
+    ApplicationName is the name of the Application to be shared as it is
+     defined in the Workspace's spec.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ShareWorkspacePortResponse(betterproto.Message):
+    """
+    ShareWorkspacePortResponse is the response of the ShareWorkspacePort method.
+     It is intentionally empty.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class UnshareWorkspacePortRequest(betterproto.Message):
+    """
+    UnshareWorkspacePortRequest is the request of the UnshareWorkspacePort
+     method.
+    """
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    WorkspaceRef is the reference of the Workspace that owns the Application.
+    """
+
     application_name: str = betterproto.string_field(2)
+    """ApplicationName is the name of the Application to stop sharing."""
 
 
 @dataclass(eq=False, repr=False)
 class UnshareWorkspacePortResponse(betterproto.Message):
+    """
+    UnshareWorkspacePortResponse is the response of the UnshareWorkspacePort
+     method. It is intentionally empty.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class LeaveSpaceRequest(betterproto.Message):
+    """LeaveSpaceRequest is the request of the LeaveSpace method."""
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """SpaceRef is the reference of the Space to be left."""
 
 
 @dataclass(eq=False, repr=False)
 class LeaveSpaceResponse(betterproto.Message):
+    """
+    LeaveSpaceResponse is the response of the LeaveSpace method. It is
+     intentionally empty.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class Region(betterproto.Message):
+    """
+    Region is an Octelium Region of the Cluster that is enabled to host
+     Workspaces. Regions are managed by the Cluster administrators and they are
+     read-only for the Users who can only choose among them when starting a
+     Workspace or when setting their preferred Region in their UserConfig.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `Region`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
     """Metadata is the object's metadata."""
 
@@ -1116,17 +3003,29 @@ class Region(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class RegionSpec(betterproto.Message):
+    """Spec is the Region specification. It is intentionally empty."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class RegionStatus(betterproto.Message):
+    """
+    Status is the current status of the Region. It is managed by the Cluster
+     and it is read-only.
+    """
+
     country: str = betterproto.string_field(1)
+    """Country is the country in which the Region is located."""
+
     city: str = betterproto.string_field(2)
+    """City is the city in which the Region is located."""
 
 
 @dataclass(eq=False, repr=False)
 class RegionList(betterproto.Message):
+    """RegionList is the response of the ListRegion method."""
+
     api_version: str = betterproto.string_field(1)
     """APIVersion is the API version of the object."""
 
@@ -1142,227 +3041,482 @@ class RegionList(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ListRegionOptions(betterproto.Message):
+    """ListRegionOptions is the request of the ListRegion method."""
+
     common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class CreateTerminalRequest(betterproto.Message):
+    """CreateTerminalRequest is the request of the CreateTerminal method."""
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    WorkspaceRef is the reference of the Workspace in which the terminal is
+     created.
+    """
+
     cols: int = betterproto.uint32_field(2)
+    """Cols is the initial number of the columns of the terminal's window."""
+
     rows: int = betterproto.uint32_field(3)
+    """Rows is the initial number of the rows of the terminal's window."""
 
 
 @dataclass(eq=False, repr=False)
 class Terminal(betterproto.Message):
+    """
+    Terminal is an interactive terminal that is running inside a Workspace.
+    """
+
     id: str = betterproto.string_field(1)
+    """
+    ID is the terminal's identifier. It is prefixed by the name of the
+     Workspace that owns the terminal (i.e. `<workspace>-<id>`).
+    """
 
 
 @dataclass(eq=False, repr=False)
 class CreateTerminalResponse(betterproto.Message):
+    """CreateTerminalResponse is the response of the CreateTerminal method."""
+
     id: str = betterproto.string_field(1)
+    """ID is the identifier of the newly created terminal."""
 
 
 @dataclass(eq=False, repr=False)
 class RemoveTerminalRequest(betterproto.Message):
+    """RemoveTerminalRequest is the request of the RemoveTerminal method."""
+
     id: str = betterproto.string_field(1)
+    """ID is the identifier of the terminal to be terminated."""
 
 
 @dataclass(eq=False, repr=False)
 class RemoveTerminalResponse(betterproto.Message):
+    """
+    RemoveTerminalResponse is the response of the RemoveTerminal method. It is
+     intentionally empty.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ListTerminalRequest(betterproto.Message):
+    """ListTerminalRequest is the request of the ListTerminal method."""
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    WorkspaceRef is the reference of the Workspace whose terminals are listed.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ListTerminalResponse(betterproto.Message):
+    """ListTerminalResponse is the response of the ListTerminal method."""
+
     items: List["Terminal"] = betterproto.message_field(1)
+    """Items is the list of the currently open terminals of the Workspace."""
 
 
 @dataclass(eq=False, repr=False)
 class WriteTerminalDataResponse(betterproto.Message):
+    """
+    WriteTerminalDataResponse is the response of the WriteTerminalData method.
+     It is intentionally empty.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class SetTerminalWindowSizeRequest(betterproto.Message):
+    """
+    SetTerminalWindowSizeRequest is the request of the SetTerminalWindowSize
+     method.
+    """
+
     id: str = betterproto.string_field(1)
+    """ID is the identifier of the terminal to be resized."""
+
     cols: int = betterproto.uint32_field(2)
+    """Cols is the new number of the columns of the terminal's window."""
+
     rows: int = betterproto.uint32_field(3)
+    """Rows is the new number of the rows of the terminal's window."""
 
 
 @dataclass(eq=False, repr=False)
 class SetTerminalWindowSizeResponse(betterproto.Message):
+    """
+    SetTerminalWindowSizeResponse is the response of the SetTerminalWindowSize
+     method. It is intentionally empty.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WriteTerminalDataRequest(betterproto.Message):
+    """
+    WriteTerminalDataRequest is the request of the WriteTerminalData method.
+    """
+
     id: str = betterproto.string_field(1)
+    """ID is the identifier of the terminal to write to."""
+
     data: bytes = betterproto.bytes_field(2)
+    """Data is the raw data (i.e. stdin) that is written to the terminal."""
 
 
 @dataclass(eq=False, repr=False)
 class ListenTerminalRequest(betterproto.Message):
+    """ListenTerminalRequest is the request of the ListenTerminal method."""
+
     id: str = betterproto.string_field(1)
+    """ID is the identifier of the terminal to listen to."""
 
 
 @dataclass(eq=False, repr=False)
 class ListenTerminalResponse(betterproto.Message):
+    """
+    ListenTerminalResponse is a single event of the ListenTerminal stream.
+    """
+
     stdout: "ListenTerminalResponseStdout" = betterproto.message_field(1, group="type")
+    """Stdout is a chunk of the terminal's output."""
+
     window_size: "ListenTerminalResponseWindowSize" = betterproto.message_field(
         2, group="type"
     )
+    """WindowSize is a resize event of the terminal's window."""
+
     close: "ListenTerminalResponseClose" = betterproto.message_field(3, group="type")
+    """Close means that the terminal was closed."""
 
 
 @dataclass(eq=False, repr=False)
 class ListenTerminalResponseStdout(betterproto.Message):
+    """Stdout is a chunk of the terminal's output."""
+
     data: bytes = betterproto.bytes_field(1)
+    """Data is the raw output data."""
 
 
 @dataclass(eq=False, repr=False)
 class ListenTerminalResponseWindowSize(betterproto.Message):
+    """WindowSize is a resize event of the terminal's window."""
+
     cols: int = betterproto.uint32_field(1)
+    """Cols is the number of the columns of the terminal's window."""
+
     rows: int = betterproto.uint32_field(2)
+    """Rows is the number of the rows of the terminal's window."""
 
 
 @dataclass(eq=False, repr=False)
 class ListenTerminalResponseClose(betterproto.Message):
+    """Close means that the terminal was closed."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ListenLogRequest(betterproto.Message):
+    """ListenLogRequest is the request of the ListenLog method."""
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    WorkspaceRef is the reference of the Workspace whose logs are streamed.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ListenLogResponse(betterproto.Message):
+    """ListenLogResponse is a single log entry of the ListenLog stream."""
+
     created_at: datetime = betterproto.message_field(1)
+    """CreatedAt is the timestamp at which the log entry was produced."""
+
     type: "ListenLogResponseType" = betterproto.enum_field(2)
+    """Type is the initialization stage that produced the log entry."""
+
     mode: "ListenLogResponseMode" = betterproto.enum_field(3)
+    """Mode is the output stream that the log entry was emitted on."""
+
     data: bytes = betterproto.bytes_field(4)
+    """Data is the raw content of the log entry."""
 
 
 @dataclass(eq=False, repr=False)
 class WatchWorkspaceRequest(betterproto.Message):
+    """WatchWorkspaceRequest is the request of the WatchWorkspace method."""
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    WorkspaceRef optionally restricts the stream to the events of a single
+     Workspace. If it is unset, the events of all the Workspaces that are owned
+     by the calling User are published.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WatchWorkspaceResponse(betterproto.Message):
+    """
+    WatchWorkspaceResponse is a single event of the WatchWorkspace stream.
+    """
+
     create: "WatchWorkspaceResponseCreate" = betterproto.message_field(3, group="type")
+    """Create means that a Workspace was created."""
+
     update: "WatchWorkspaceResponseUpdate" = betterproto.message_field(4, group="type")
+    """Update means that a Workspace was updated."""
+
     delete: "WatchWorkspaceResponseDelete" = betterproto.message_field(5, group="type")
+    """Delete means that a Workspace was deleted."""
 
 
 @dataclass(eq=False, repr=False)
 class WatchWorkspaceResponseCreate(betterproto.Message):
+    """Create means that a Workspace was created."""
+
     item: "Workspace" = betterproto.message_field(1)
+    """Item is the created Workspace."""
 
 
 @dataclass(eq=False, repr=False)
 class WatchWorkspaceResponseUpdate(betterproto.Message):
+    """Update means that a Workspace was updated (e.g. its state changed)."""
+
     new_item: "Workspace" = betterproto.message_field(1)
+    """NewItem is the Workspace after the update."""
+
     old_item: "Workspace" = betterproto.message_field(2)
+    """
+    OldItem is the Workspace before the update. Comparing it against the
+     newItem is the recommended way to detect the actual state transitions.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class WatchWorkspaceResponseDelete(betterproto.Message):
+    """Delete means that a Workspace was deleted."""
+
     item: "Workspace" = betterproto.message_field(1)
+    """Item is the deleted Workspace."""
 
 
 @dataclass(eq=False, repr=False)
 class CancelBuildTemplateRequest(betterproto.Message):
+    """
+    CancelBuildTemplateRequest is the request of the CancelBuildTemplate method.
+    """
+
     template_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    TemplateRef is the reference of the Template whose running pre-build is
+     canceled.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ExecRequest(betterproto.Message):
+    """
+    ExecRequest is a client message of the Exec bidirectional stream. The first
+     message of the stream must carry a `request`.
+    """
+
     request: "ExecRequestRequest" = betterproto.message_field(1, group="type")
+    """
+    Request initializes the execution. It must be the first message of the
+     stream.
+    """
+
     write_data: "ExecRequestWriteData" = betterproto.message_field(2, group="type")
+    """WriteData writes data to the command's standard input."""
+
     kill: "ExecRequestKill" = betterproto.message_field(3, group="type")
+    """Kill terminates the running command."""
 
 
 @dataclass(eq=False, repr=False)
 class ExecRequestRequest(betterproto.Message):
+    """
+    Request initializes the execution. It must be the first message that is
+     sent by the client.
+    """
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    WorkspaceRef is the reference of the Workspace in which the command is
+     executed.
+    """
+
     command: str = betterproto.string_field(2)
+    """Command is the shell command to be executed."""
+
     working_dir: str = betterproto.string_field(3)
+    """WorkingDir is the working directory of the command."""
+
     env_vars: List["ExecRequestRequestEnvVar"] = betterproto.message_field(4)
+    """
+    EnvVars is the list of the environment variables that are set for the
+     command.
+    """
+
     run_as_root: bool = betterproto.bool_field(5)
+    """
+    RunAsRoot runs the command as `root` instead of as the Workspace User.
+    """
+
     has_stdin: bool = betterproto.bool_field(6)
+    """
+    HasStdin means that the client streams stdin to the command via the
+     subsequent writeData messages.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ExecRequestRequestEnvVar(betterproto.Message):
+    """
+    EnvVar is an environment variable that is set for the executed command.
+    """
+
     key: str = betterproto.string_field(1)
+    """Key is the environment variable's name."""
+
     value: str = betterproto.string_field(2)
+    """Value is the environment variable's value."""
 
 
 @dataclass(eq=False, repr=False)
 class ExecRequestKill(betterproto.Message):
+    """Kill terminates the running command."""
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class ExecRequestWriteData(betterproto.Message):
+    """WriteData writes data to the command's standard input."""
+
     data: bytes = betterproto.bytes_field(1)
+    """
+    Data is the raw data that is written to the command's standard input.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ExecResponse(betterproto.Message):
+    """ExecResponse is a server message of the Exec bidirectional stream."""
+
     stdout: "ExecResponseStdout" = betterproto.message_field(1, group="type")
+    """Stdout is a chunk of the command's standard output."""
+
     stderr: "ExecResponseStderr" = betterproto.message_field(2, group="type")
+    """Stderr is a chunk of the command's standard error."""
+
     exit: "ExecResponseExit" = betterproto.message_field(3, group="type")
+    """Exit means that the command exited."""
 
 
 @dataclass(eq=False, repr=False)
 class ExecResponseStdout(betterproto.Message):
+    """Stdout is a chunk of the command's standard output."""
+
     data: bytes = betterproto.bytes_field(1)
+    """Data is the raw output data."""
 
 
 @dataclass(eq=False, repr=False)
 class ExecResponseStderr(betterproto.Message):
+    """Stderr is a chunk of the command's standard error."""
+
     data: bytes = betterproto.bytes_field(1)
+    """Data is the raw error output data."""
 
 
 @dataclass(eq=False, repr=False)
 class ExecResponseExit(betterproto.Message):
+    """Exit means that the command exited."""
+
     code: int = betterproto.int32_field(1)
+    """Code is the exit code with which the command exited."""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfig(betterproto.Message):
+    """
+    ClusterConfig is the sole source of truth for all the global configurations
+     and settings of the Cordium Cluster. It controls the Space ownership policy,
+     the Workspace storage class selection, the Cluster-wide resource limits as
+     well as the Workspace timeouts. There is exactly one ClusterConfig per
+     Cordium Cluster. It is created automatically at installation time and it is
+     managed by the Cluster administrators via the ManagementService.
+    """
+
     api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
     kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `ClusterConfig`)."""
+
     metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
     spec: "ClusterConfigSpec" = betterproto.message_field(4)
+    """Spec is the ClusterConfig specification."""
+
     status: "ClusterConfigStatus" = betterproto.message_field(5)
+    """Status is the current status of the ClusterConfig."""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpec(betterproto.Message):
+    """Spec is the ClusterConfig specification"""
+
     space: "ClusterConfigSpecSpace" = betterproto.message_field(1)
+    """Space is the Cluster-wide Space-related configuration."""
+
     workspace: "ClusterConfigSpecWorkspace" = betterproto.message_field(2)
+    """Workspace is the Cluster-wide Workspace-related configuration."""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecSpace(betterproto.Message):
+    """Space is the Cluster-wide Space-related configuration."""
+
     ownership: "ClusterConfigSpecSpaceOwnership" = betterproto.message_field(1)
+    """
+    Ownership is the policy that controls which Users are allowed to own
+     Spaces. If it is unset, no User is allowed to own a Space.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecSpaceOwnership(betterproto.Message):
+    """
+    Ownership is the policy that controls which Users are allowed to own
+     (i.e. create) Spaces.
+    """
+
     rules: List["ClusterConfigSpecSpaceOwnershipRule"] = betterproto.message_field(1)
+    """
+    Rules is the list of the ownership rules. The DENY rules are
+     evaluated first and, if none of them matches, the ALLOW rules are
+     evaluated. If no rule matches, the request is denied.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecSpaceOwnershipRule(betterproto.Message):
+    """Rule is a single ownership rule."""
+
     effect: "ClusterConfigSpecSpaceOwnershipRuleEffect" = betterproto.enum_field(1)
     """
     Effect is the effect of the policy when a match happens to any of
@@ -1370,78 +3524,227 @@ class ClusterConfigSpecSpaceOwnershipRule(betterproto.Message):
     """
 
     condition: "Condition" = betterproto.message_field(2)
+    """
+    Condition is evaluated against the request context which contains
+     the requesting User (i.e. `ctx.user`) and the Space that is being
+     created (i.e. `ctx.space`).
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspace(betterproto.Message):
+    """Workspace is the Cluster-wide Workspace-related configuration."""
+
     storage: "ClusterConfigSpecWorkspaceStorage" = betterproto.message_field(1)
+    """Storage is the storage provisioning configuration of the Workspaces."""
+
     limit: "ClusterConfigSpecWorkspaceLimit" = betterproto.message_field(2)
+    """Limit is the Cluster-wide Workspace limits."""
+
     timeout: "ClusterConfigSpecWorkspaceTimeout" = betterproto.message_field(3)
+    """Timeout is the Cluster-wide Workspace inactivity timeouts."""
+
+    runtime: "ClusterConfigSpecWorkspaceRuntime" = betterproto.message_field(4)
+    """Runtime is the Cluster-wide runtime configuration of the Workspaces."""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspaceStorage(betterproto.Message):
+    """Storage is the storage provisioning configuration of the Workspaces."""
+
     storage_class: "ClusterConfigSpecWorkspaceStorageStorageClass" = (
         betterproto.message_field(1)
     )
+    """StorageClass selects the StorageClass of the Workspaces' volumes."""
+
     volume_snapshot_class: "ClusterConfigSpecWorkspaceStorageVolumeSnapshotClass" = (
         betterproto.message_field(2)
     )
+    """
+    VolumeSnapshotClass selects the VolumeSnapshotClass of the Template
+     pre-build snapshots. If it is unset or if no rule matches, the
+     Template pre-builds are disabled.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspaceStorageStorageClass(betterproto.Message):
+    """
+    StorageClass selects the Kubernetes StorageClass that is used to
+     provision the Workspaces' volumes.
+    """
+
     rules: List["ClusterConfigSpecWorkspaceStorageStorageClassRule"] = (
         betterproto.message_field(1)
     )
+    """
+    Rules is the list of the storage class selection rules. They are
+     evaluated in order and the first matching one is used.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspaceStorageStorageClassRule(betterproto.Message):
+    """Rule is a single storage class selection rule."""
+
     condition: "Condition" = betterproto.message_field(1)
+    """
+    Condition is evaluated against the Workspace that is being
+     provisioned (i.e. `workspace`).
+    """
+
     storage_class: str = betterproto.string_field(2)
+    """
+    StorageClass is the name of the Kubernetes StorageClass that is
+     used once the Condition matches.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspaceStorageVolumeSnapshotClass(betterproto.Message):
+    """
+    VolumeSnapshotClass selects the Kubernetes VolumeSnapshotClass that
+     is used for the Template pre-build snapshots.
+    """
+
     rules: List["ClusterConfigSpecWorkspaceStorageVolumeSnapshotClassRule"] = (
         betterproto.message_field(1)
     )
+    """
+    Rules is the list of the volume snapshot class selection rules.
+     They are evaluated in order and the first matching one is used.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspaceStorageVolumeSnapshotClassRule(betterproto.Message):
+    """Rule is a single volume snapshot class selection rule."""
+
     condition: "Condition" = betterproto.message_field(1)
+    """
+    Condition is evaluated against the request context which
+     contains the build Workspace (i.e. `ctx.workspace`) and its
+     Template (i.e. `ctx.template`).
+    """
+
     volume_snapshot_class: str = betterproto.string_field(2)
+    """
+    VolumeSnapshotClass is the name of the Kubernetes
+     VolumeSnapshotClass that is used once the Condition matches.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspaceLimit(betterproto.Message):
+    """
+    Limit is the Cluster-wide Workspace limits. All the fields are
+     optional and omitting one means that no Cluster-level restriction is
+     applied for that dimension.
+    """
+
     max_per_user: int = betterproto.uint32_field(1)
+    """
+    MaxPerUser is the maximum total number of the Workspaces that a
+     single User can own.
+    """
+
     max_active_per_user: int = betterproto.uint32_field(2)
+    """
+    MaxActivePerUser is the maximum number of the Workspaces that a
+     single User can have running at the same time.
+    """
+
     build_limit: "WorkspaceSpecLimit" = betterproto.message_field(3)
+    """
+    BuildLimit is the compute resources that are allocated for the
+     Template pre-build Workspaces.
+    """
+
     default_organization_space_limit: "WorkspaceSpecLimit" = betterproto.message_field(
         4
     )
+    """
+    DefaultOrganizationSpaceLimit is the default compute resources of
+     the Workspaces that belong to ORGANIZATION Spaces.
+    """
+
     default_user_space_limit: "WorkspaceSpecLimit" = betterproto.message_field(5)
+    """
+    DefaultUserSpaceLimit is the default compute resources of the
+     Workspaces that belong to USER Spaces.
+    """
+
     max_limit: "WorkspaceSpecLimit" = betterproto.message_field(6)
+    """MaxLimit is a hard cap that no Workspace of the Cluster can exceed."""
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspaceTimeout(betterproto.Message):
+    """
+    Timeout is the Cluster-wide inactivity timeouts after which a running
+     Workspace is automatically stopped. All the fields are optional.
+    """
+
     default_duration: "__meta_v1__.Duration" = betterproto.message_field(1)
+    """
+    DefaultDuration is the inactivity timeout that is applied when no
+     Space-type-specific duration is set.
+    """
+
     user_space_duration: "__meta_v1__.Duration" = betterproto.message_field(2)
+    """
+    UserSpaceDuration is the inactivity timeout of the Workspaces that
+     belong to USER Spaces.
+    """
+
     organization_space_duration: "__meta_v1__.Duration" = betterproto.message_field(3)
+    """
+    OrganizationSpaceDuration is the inactivity timeout of the
+     Workspaces that belong to ORGANIZATION Spaces.
+    """
+
     max_active_duration: "__meta_v1__.Duration" = betterproto.message_field(4)
+    """
+    MaxActiveDuration is the maximum total duration for which a
+     Workspace can remain running regardless of its activity.
+    """
+
+    allow_no_timeout: bool = betterproto.bool_field(5)
+    """
+    AllowNoTimeout allows the Workspaces to disable their inactivity
+     timeout entirely via their runtime's timeout mode.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecWorkspaceRuntime(betterproto.Message):
+    """Runtime is the Cluster-wide runtime configuration of the Workspaces."""
+
+    capabilities: "WorkspaceSpecRuntimeCapabilities" = betterproto.message_field(1)
+    """
+    Capabilities is the Linux capabilities that are merged into every
+     Workspace of the Cluster.
+    """
 
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigStatus(betterproto.Message):
+    """
+    Status is the current status of the ClusterConfig. It is intentionally
+     empty.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class Condition(betterproto.Message):
+    """
+    Condition is a boolean expression that is evaluated by the Cluster against a
+     request context. It is used by the ClusterConfig rules (e.g. the Space
+     ownership rules and the storage class selection rules).
+    """
+
     match_any: bool = betterproto.bool_field(1, group="type")
     """MatchAny matches anything"""
 
@@ -1469,43 +3772,86 @@ class Condition(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class ConditionAll(betterproto.Message):
+    """All acts as a logical AND operator on its list of Conditions."""
+
     of: List["Condition"] = betterproto.message_field(1)
+    """Of is the list of the Conditions that all have to match."""
 
 
 @dataclass(eq=False, repr=False)
 class ConditionAny(betterproto.Message):
+    """Any acts as a logical OR operator on its list of Conditions."""
+
     of: List["Condition"] = betterproto.message_field(1)
-    """Expressions is the list of CEL expressions"""
+    """Of is the list of the Conditions of which at least one has to match."""
 
 
 @dataclass(eq=False, repr=False)
 class ConditionNone(betterproto.Message):
+    """None acts as a logical NOR operator on its list of Conditions."""
+
     of: List["Condition"] = betterproto.message_field(1)
-    """Expressions is the list of CEL expressions"""
+    """Of is the list of the Conditions of which none is allowed to match."""
 
 
 @dataclass(eq=False, repr=False)
 class ConditionOpa(betterproto.Message):
+    """OPA is an OPA (Open Policy Agent) Rego script."""
+
     inline: str = betterproto.string_field(1, group="type")
     """Inline is the OPA Rego script directly provided as a string"""
 
 
 @dataclass(eq=False, repr=False)
 class GetClusterConfigRequest(betterproto.Message):
+    """
+    GetClusterConfigRequest is the request of the GetClusterConfig method. It is
+     intentionally empty since there is exactly one ClusterConfig per Cluster.
+    """
+
     pass
 
 
 @dataclass(eq=False, repr=False)
 class SessionExtInfo(betterproto.Message):
+    """
+    SessionExtInfo is the Cordium-specific information that is attached to the
+     dedicated Octelium Session that is created for a Workspace run. It lets the
+     rest of the Octelium Cluster identify which Workspace, Space and Template a
+     given Session belongs to.
+    """
+
     workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    WorkspaceRef is the reference of the Workspace that the Session was
+     created for.
+    """
+
     space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    SpaceRef is the reference of the Space that the Workspace belongs to.
+    """
+
     template_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(3)
+    """
+    TemplateRef is the reference of the Template that the Workspace was
+     created from.
+    """
+
     space_type: "SpaceStatusType" = betterproto.enum_field(4)
+    """SpaceType is the type of the Space that the Workspace belongs to."""
 
 
 @dataclass(eq=False, repr=False)
 class RegionExtInfo(betterproto.Message):
+    """
+    RegionExtInfo is the Cordium-specific information that is attached to an
+     Octelium Region. It is what marks a Region as being able to host Cordium
+     Workspaces.
+    """
+
     is_enabled: bool = betterproto.bool_field(1)
+    """IsEnabled means that the Region is enabled to host Workspaces."""
 
 
 class MainServiceStub(betterproto.ServiceStub):

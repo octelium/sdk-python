@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cordium-sdk"
+version = "0.1.0"
+description = "The synchronous and asynchronous Python SDK for Cordium workspaces"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "Octelium", email = "contact@octelium.com"}]
+dependencies = ["octelium-apis>=1.0.3,<2", "betterproto==2.0.0b7", "grpclib>=0.4.8,<0.5", "httpx>=0.27,<1"]
+classifiers = ["Programming Language :: Python :: 3", "Programming Language :: Python :: 3.11", "Programming Language :: Python :: 3.12", "Programming Language :: Python :: 3.13", "Programming Language :: Python :: 3.14", "Typing :: Typed"]
+
+[project.urls]
+Repository = "https://github.com/octelium/sdk-python"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cordium = ["py.typed"]

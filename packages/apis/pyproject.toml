@@ -6,6 +6,7 @@ build-backend = 'setuptools.build_meta'
 name = 'octelium-apis'
 version = '1.0.3'
 description = 'Octelium Protobuf APIs'
+readme = 'README.md'
 authors = [{name = 'Octelium', email = 'contact@octelium.com'}]
 license = {text = 'Apache-2.0'}
 requires-python = '>=3.10'

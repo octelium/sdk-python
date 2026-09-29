@@ -1,0 +1,9 @@
+-e packages/apis
+-e packages/cordium
+betterproto[compiler]==2.0.0b7
+pytest>=8,<10
+pytest-asyncio>=1,<2
+ruff>=0.9,<1
+mypy>=1.14,<3
+build>=1.2,<2
+twine>=6,<7

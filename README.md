@@ -1,5 +1,9 @@
 # Octelium Python SDK
 
+## Cordium SDK
+
+The new [Cordium Python SDK](packages/cordium/README.md) provides typed blocking and native async clients for workspace automation, execution, files, terminals, templates, snapshots, volumes, and administration. See its [API reference](packages/cordium/docs/api.md) and [examples](packages/cordium/examples). Install it from this checkout with `python -m pip install ./packages/apis ./packages/cordium`.
+
 This is the official Python SDK for Octelium. The SDK provides authenticated access to Octelium gRPC and HTTP APIs using async Python APIs built on top of `grpclib`, `aiohttp`, and `betterproto`.
 
 ## Installation

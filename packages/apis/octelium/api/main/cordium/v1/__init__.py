@@ -82,13 +82,35 @@ class WorkspaceSpecRuntimeNetworkRuleAction(betterproto.Enum):
     """Action is the effect of the Rule when it matches"""
 
     ACTION_UNSET = 0
-    """ACTION_UNSET falls back to the default action."""
+    """
+    ACTION_UNSET is not used. The action of a Rule must be
+     explicitly set.
+    """
 
     ALLOW = 1
     """ALLOW allows the matched traffic."""
 
     DENY = 2
     """DENY denies the matched traffic."""
+
+
+class WorkspaceSpecRuntimeNetworkEgressDefaultAction(betterproto.Enum):
+    """DefaultAction is the action that is applied when no Rule matches"""
+
+    DEFAULT_ACTION_UNSET = 0
+    """DEFAULT_ACTION_UNSET falls back to ALLOW_PUBLIC."""
+
+    ALLOW_PUBLIC = 1
+    """
+    ALLOW_PUBLIC allows the traffic to the publicly routable
+     networks and denies the traffic to the private ones.
+    """
+
+    DENY = 2
+    """
+    DENY denies all the traffic that is not matched by an ALLOW
+     Rule.
+    """
 
 
 class WorkspaceSpecRuntimeTimeoutMode(betterproto.Enum):
@@ -218,6 +240,99 @@ class WorkspaceStatusSharedPortMode(betterproto.Enum):
 
     ALL = 2
     """ALL shares the Application with all the Cluster's Users."""
+
+
+class WorkspaceSnapshotStatusState(betterproto.Enum):
+    """State is the current state of the WorkspaceSnapshot's lifecycle"""
+
+    STATE_UNKNOWN = 0
+    """STATE_UNKNOWN is not used."""
+
+    STATE_CREATING = 1
+    """
+    STATE_CREATING means that the storage backend is still taking the
+     snapshot. The snapshot cannot be restored from yet.
+    """
+
+    STATE_READY = 2
+    """
+    STATE_READY means that the snapshot is complete and that new
+     Workspaces can be restored from it.
+    """
+
+    STATE_FAILED = 3
+    """
+    STATE_FAILED means that the snapshot could not be taken. It can never
+     be restored from.
+    """
+
+
+class WorkspaceSnapshotStatusConsistency(betterproto.Enum):
+    """Consistency is the consistency guarantee of the snapshot"""
+
+    CONSISTENCY_UNSET = 0
+    """CONSISTENCY_UNSET is not used."""
+
+    CONSISTENCY_CRASH = 1
+    """
+    CONSISTENCY_CRASH means that the snapshot was taken while the source
+     Workspace was running. It is equivalent to the state of the storage
+     after a power loss (i.e. the data that was still buffered in memory is
+     not included).
+    """
+
+    CONSISTENCY_CLEAN = 2
+    """
+    CONSISTENCY_CLEAN means that the source Workspace was stopped when the
+     snapshot was taken.
+    """
+
+
+class VolumeAccessMode(betterproto.Enum):
+    """AccessMode is the concurrency guarantee of a Volume"""
+
+    ACCESS_MODE_UNSET = 0
+    """ACCESS_MODE_UNSET falls back to EXCLUSIVE."""
+
+    ACCESS_MODE_EXCLUSIVE = 1
+    """
+    ACCESS_MODE_EXCLUSIVE is a Volume that is meant to be actively mounted
+     by a single Workspace at a time. It is backed by a single-writer
+     Kubernetes volume which is what the block storage backends typically
+     provide.
+    """
+
+    ACCESS_MODE_SHARED = 2
+    """
+    ACCESS_MODE_SHARED is a Volume that can be actively mounted by several
+     Workspaces at the same time. It is backed by a multi-writer Kubernetes
+     volume and, therefore, it requires the Cluster to be configured with a
+     shared filesystem storage backend (e.g. NFS, CephFS or EFS).
+    """
+
+
+class VolumeStatusState(betterproto.Enum):
+    """State is the current state of the Volume's lifecycle"""
+
+    STATE_UNKNOWN = 0
+    """STATE_UNKNOWN is not used."""
+
+    STATE_PENDING = 1
+    """
+    STATE_PENDING means that the underlying storage is not provisioned
+     yet. A Volume can already be mounted by the Workspaces while it is
+     PENDING since the storage backends commonly defer the provisioning
+     itself until the first Workspace that mounts the Volume is scheduled.
+    """
+
+    STATE_READY = 2
+    """STATE_READY means that the underlying storage is provisioned."""
+
+    STATE_FAILED = 3
+    """
+    STATE_FAILED means that the underlying storage could not be
+     provisioned or that it was lost.
+    """
 
 
 class TemplateStatusBuildInfoBuildState(betterproto.Enum):
@@ -878,6 +993,16 @@ class WorkspaceSpecRuntime(betterproto.Message):
      and automated workloads where no human interaction is expected.
     """
 
+    volume_mounts: List["WorkspaceSpecRuntimeVolumeMount"] = betterproto.message_field(
+        13
+    )
+    """
+    VolumeMounts is the list of the Volumes of the Workspace's Space that
+     are mounted inside the Workspace. The mounts that are defined by the
+     Template are merged with the ones that are defined by the Workspace
+     itself.
+    """
+
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeEnvVar(betterproto.Message):
@@ -962,6 +1087,35 @@ class WorkspaceSpecRuntimeTaskEnvVar(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class WorkspaceSpecRuntimeVolumeMount(betterproto.Message):
+    """
+    VolumeMount attaches a Volume of the Workspace's Space to a path
+     inside the Workspace's container.
+    """
+
+    volume_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    """
+    VolumeRef is the reference of the mounted Volume. The Volume must
+     belong to the same Space as the Workspace.
+    """
+
+    mount_path: str = betterproto.string_field(2)
+    """
+    MountPath is the absolute, canonical path inside the Workspace's
+     container at which the Volume is mounted (e.g. `/data`). It cannot
+     be the root directory, it cannot overlap with another mount and it
+     cannot cover the paths that are reserved by the Cluster.
+    """
+
+    read_only: bool = betterproto.bool_field(3)
+    """
+    ReadOnly mounts the Volume read-only inside this Workspace. It is
+     set per mount (i.e. the same Volume can simultaneously be mounted
+     read-write by a Workspace and read-only by another one).
+    """
+
+
+@dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeDevcontainers(betterproto.Message):
     """Devcontainers is the Development Container-related configuration."""
 
@@ -1032,28 +1186,50 @@ class WorkspaceSpecRuntimeOctelium(betterproto.Message):
 class WorkspaceSpecRuntimeNetwork(betterproto.Message):
     """Network is the network-related configuration of the Workspace."""
 
-    pass
+    egress: "WorkspaceSpecRuntimeNetworkEgress" = betterproto.message_field(1)
+    """Egress is the egress (i.e. outbound) traffic configuration."""
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeNetworkRule(betterproto.Message):
-    """Rule is a network rule that matches a set of network ranges."""
+    """
+    Rule is a network rule that matches a set of network ranges and
+     ports.
+    """
 
     cidrs: List[str] = betterproto.string_field(1)
     """
     CIDRs is the list of the network ranges, in CIDR notation, that
-     are matched by the Rule.
+     are matched by the Rule. At least one CIDR must be set.
+    """
+
+    action: "WorkspaceSpecRuntimeNetworkRuleAction" = betterproto.enum_field(2)
+    """Action is the effect of the Rule when it matches. It must be set."""
+
+    ports: List[int] = betterproto.uint32_field(3)
+    """
+    Ports is the list of the destination ports that are matched by the
+     Rule. An empty list matches every port.
     """
 
 
 @dataclass(eq=False, repr=False)
 class WorkspaceSpecRuntimeNetworkEgress(betterproto.Message):
-    """Egress is the egress (i.e. outbound) traffic configuration."""
+    """
+    Egress is the egress (i.e. outbound) traffic configuration of the
+     Workspace. The Rules are unordered. A destination that is matched by
+     a DENY Rule is denied even if it is also matched by an ALLOW Rule. A
+     destination that is matched by no Rule falls back to the
+     DefaultAction. The Cluster's own protected networks are always
+     denied regardless of the configuration.
+    """
 
     rules: List["WorkspaceSpecRuntimeNetworkRule"] = betterproto.message_field(1)
-    """Rules is the list of the egress rules that are evaluated in order."""
+    """Rules is the list of the egress rules."""
 
-    default_action: "WorkspaceSpecRuntimeNetworkRuleAction" = betterproto.enum_field(2)
+    default_action: "WorkspaceSpecRuntimeNetworkEgressDefaultAction" = (
+        betterproto.enum_field(2)
+    )
     """DefaultAction is the action that is applied when no Rule matches."""
 
 
@@ -1328,6 +1504,23 @@ class WorkspaceStatus(betterproto.Message):
      the most to the least recent one.
     """
 
+    workspace_snapshot_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
+        26
+    )
+    """
+    WorkspaceSnapshotRef is the reference of the WorkspaceSnapshot that the
+     Workspace's persistent storage was restored from. It is set by the
+     Cluster upon the creation of the Workspace and it is immutable.
+    """
+
+    last_region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(27)
+    """
+    LastRegionRef is the reference of the Region that hosted the latest run
+     of the Workspace. Unlike regionRef, which is unset once the Workspace is
+     stopped, it is preserved since the Workspace's persistent storage
+     remains in that Region.
+    """
+
 
 @dataclass(eq=False, repr=False)
 class WorkspaceStatusFailure(betterproto.Message):
@@ -1418,6 +1611,17 @@ class WorkspaceStatusFailure(betterproto.Message):
     AdditionalRepoClone means that cloning one of the additional
      repositories failed.
     """
+
+    network_policy: "WorkspaceStatusFailureNetworkPolicy" = betterproto.message_field(
+        16, group="type"
+    )
+    """
+    NetworkPolicy means that the Workspace's network configuration could
+     not be enforced.
+    """
+
+    volume: "WorkspaceStatusFailureVolume" = betterproto.message_field(17, group="type")
+    """Volume means that one of the mounted Volumes could not be resolved."""
 
 
 @dataclass(eq=False, repr=False)
@@ -1561,6 +1765,29 @@ class WorkspaceStatusFailureAdditionalRepoClone(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class WorkspaceStatusFailureNetworkPolicy(betterproto.Message):
+    """
+    NetworkPolicy means that the Workspace's network configuration could
+     not be enforced. The Workspace is not started in that case.
+    """
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceStatusFailureVolume(betterproto.Message):
+    """
+    Volume means that one of the Volumes that are mounted by the
+     Workspace could not be resolved (e.g. it does not exist anymore, it
+     belongs to another Space or it is hosted in another Region). The
+     Workspace is not started in that case.
+    """
+
+    name: str = betterproto.string_field(1)
+    """Name is the name of the Volume that could not be resolved."""
+
+
+@dataclass(eq=False, repr=False)
 class WorkspaceStatusSharedPort(betterproto.Message):
     """
     SharedPort is a named Application of the Workspace that is shared with
@@ -1645,6 +1872,396 @@ class ListWorkspaceOptions(betterproto.Message):
     """
     TemplateRef returns only the Workspaces that belong to this Template.
     """
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshot(betterproto.Message):
+    """
+    WorkspaceSnapshot is a point-in-time checkpoint of the persistent storage of
+     a Workspace. It is backed by a Kubernetes CSI volume snapshot of the
+     Workspace's underlying volume and it is what enables a Workspace to be
+     cloned into a brand new Workspace inside the same Space. A snapshot is taken
+     online (i.e. without stopping the source Workspace) in which case it is a
+     crash-consistent checkpoint, or while the source Workspace is stopped in
+     which case it is a clean one. Snapshots are owned by the Octelium User who
+     created them and they have a lifecycle of their own (i.e. they outlive both
+     their source Workspace and the Workspaces that are restored from them).
+    """
+
+    api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
+    kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `WorkspaceSnapshot`)."""
+
+    metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
+    spec: "WorkspaceSnapshotSpec" = betterproto.message_field(4)
+    """Spec is the WorkspaceSnapshot specification."""
+
+    status: "WorkspaceSnapshotStatus" = betterproto.message_field(5)
+    """Status is the current status of the WorkspaceSnapshot."""
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshotSpec(betterproto.Message):
+    """
+    Spec is the WorkspaceSnapshot specification. It is intentionally empty.
+    """
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshotStatus(betterproto.Message):
+    """
+    Status is the current status of the WorkspaceSnapshot. It is entirely
+     managed by the Cluster and it is read-only.
+    """
+
+    state: "WorkspaceSnapshotStatusState" = betterproto.enum_field(1)
+    """State is the current state of the WorkspaceSnapshot."""
+
+    workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """
+    WorkspaceRef is the reference of the Workspace that the snapshot was
+     taken from. It is kept even after that Workspace is deleted.
+    """
+
+    user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(3)
+    """UserRef is the reference of the Octelium User who owns the snapshot."""
+
+    space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(4)
+    """
+    SpaceRef is the reference of the Space of the source Workspace. New
+     Workspaces can only be restored from the snapshot inside that Space.
+    """
+
+    template_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(5)
+    """
+    TemplateRef is the reference of the Template of the source Workspace.
+    """
+
+    region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(6)
+    """
+    RegionRef is the reference of the Region that holds the snapshot. It is
+     the Region that hosted the latest run of the source Workspace and it is
+     where the restored Workspaces are run.
+    """
+
+    snapshot_at: datetime = betterproto.message_field(7)
+    """
+    SnapshotAt is the timestamp of the point-in-time cut as it is reported
+     by the storage backend. It is unset until the backend starts taking the
+     snapshot.
+    """
+
+    ready_at: datetime = betterproto.message_field(8)
+    """ReadyAt is the timestamp at which the snapshot became restorable."""
+
+    restore_size_bytes: int = betterproto.uint64_field(9)
+    """
+    RestoreSizeBytes is the minimum size, in bytes, of the volume that the
+     snapshot can be restored into. It is reported by the storage backend.
+    """
+
+    consistency: "WorkspaceSnapshotStatusConsistency" = betterproto.enum_field(10)
+    """Consistency is the consistency guarantee of the snapshot."""
+
+    failure: "WorkspaceSnapshotStatusFailure" = betterproto.message_field(11)
+    """Failure is the reason of the failure of the snapshot, if any."""
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshotStatusFailure(betterproto.Message):
+    """Failure describes the reason of the failure of a snapshot."""
+
+    message: str = betterproto.string_field(1)
+    """Message is a human-readable description of the failure."""
+
+    unsupported: "WorkspaceSnapshotStatusFailureUnsupported" = (
+        betterproto.message_field(2, group="type")
+    )
+    """
+    Unsupported means that the Cluster cannot snapshot the Workspaces'
+     storage.
+    """
+
+    source_not_found: "WorkspaceSnapshotStatusFailureSourceNotFound" = (
+        betterproto.message_field(3, group="type")
+    )
+    """SourceNotFound means that the Workspace's volume does not exist."""
+
+    storage: "WorkspaceSnapshotStatusFailureStorage" = betterproto.message_field(
+        4, group="type"
+    )
+    """Storage means that the storage backend failed to take the snapshot."""
+
+    unknown: "WorkspaceSnapshotStatusFailureUnknown" = betterproto.message_field(
+        5, group="type"
+    )
+    """Unknown means that the snapshot failed for an unclassified reason."""
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshotStatusFailureUnsupported(betterproto.Message):
+    """
+    Unsupported means that the Cluster is not able to snapshot the
+     Workspaces' storage (e.g. the CSI volume snapshot API is not installed
+     or no VolumeSnapshotClass is configured).
+    """
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshotStatusFailureSourceNotFound(betterproto.Message):
+    """
+    SourceNotFound means that the Workspace's underlying volume does not
+     exist anymore.
+    """
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshotStatusFailureStorage(betterproto.Message):
+    """Storage means that the storage backend failed to take the snapshot."""
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshotStatusFailureUnknown(betterproto.Message):
+    """Unknown means that the snapshot failed for an unclassified reason."""
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WorkspaceSnapshotList(betterproto.Message):
+    """
+    WorkspaceSnapshotList is the response of the ListWorkspaceSnapshot method.
+    """
+
+    api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
+    kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `WorkspaceSnapshotList`)."""
+
+    items: List["WorkspaceSnapshot"] = betterproto.message_field(3)
+    """Items is the list of WorkspaceSnapshots."""
+
+    list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
+    """ListResponseMeta is common information about the list."""
+
+
+@dataclass(eq=False, repr=False)
+class ListWorkspaceSnapshotOptions(betterproto.Message):
+    """
+    ListWorkspaceSnapshotOptions is the request of the ListWorkspaceSnapshot
+     method. The returned WorkspaceSnapshots are always restricted to the ones
+     that are owned by the calling User.
+    """
+
+    common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
+
+    workspace_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
+        2, group="filter"
+    )
+    """WorkspaceRef returns only the snapshots of this Workspace."""
+
+    space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(
+        3, group="filter"
+    )
+    """
+    SpaceRef returns only the snapshots whose source Workspace belongs to
+     this Space.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class Volume(betterproto.Message):
+    """
+    Volume is a persistent storage device that lives inside a Space and that is
+     mounted by the Workspaces of that Space at arbitrary paths. Unlike the
+     Workspace's own private storage, a Volume has a lifecycle of its own (i.e.
+     it outlives the Workspaces that mount it), it is shared between the Members
+     of its Space and it is never included in the WorkspaceSnapshots of the
+     Workspaces that mount it. Volumes are backed by a Kubernetes persistent
+     volume and, therefore, they belong to a single Region and can only be
+     mounted by the Workspaces that run in that same Region.
+    """
+
+    api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
+    kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `Volume`)."""
+
+    metadata: "__meta_v1__.Metadata" = betterproto.message_field(3)
+    """Metadata is the object's metadata."""
+
+    spec: "VolumeSpec" = betterproto.message_field(4)
+    """Spec is the Volume specification."""
+
+    status: "VolumeStatus" = betterproto.message_field(5)
+    """Status is the current status of the Volume."""
+
+
+@dataclass(eq=False, repr=False)
+class VolumeSpec(betterproto.Message):
+    """Spec is the Volume specification"""
+
+    size: "VolumeSpecSize" = betterproto.message_field(1)
+    """
+    Size is the requested capacity of the Volume. It defaults to the
+     Cluster's default Volume size. It can later be grown but never shrunk
+     and growing it additionally requires the storage backend to support the
+     expansion of the already provisioned volumes.
+    """
+
+    access_mode: "VolumeAccessMode" = betterproto.enum_field(2)
+    """
+    AccessMode is the concurrency guarantee of the Volume. It is immutable
+     and it defaults to EXCLUSIVE.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class VolumeSpecSize(betterproto.Message):
+    """Size is the capacity of a Volume."""
+
+    megabytes: int = betterproto.uint32_field(1)
+    """Megabytes is the capacity in megabytes."""
+
+
+@dataclass(eq=False, repr=False)
+class VolumeStatus(betterproto.Message):
+    """
+    Status is the current status of the Volume. It is entirely managed by the
+     Cluster and it is read-only.
+    """
+
+    state: "VolumeStatusState" = betterproto.enum_field(1)
+    """State is the current state of the Volume."""
+
+    space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """SpaceRef is the reference of the Space that owns the Volume."""
+
+    user_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(3)
+    """
+    UserRef is the reference of the Octelium User who created the Volume.
+    """
+
+    region_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(4)
+    """
+    RegionRef is the reference of the Region that hosts the Volume's
+     underlying storage. Only the Workspaces that run in that Region can
+     mount the Volume.
+    """
+
+    capacity: "VolumeSpecSize" = betterproto.message_field(5)
+    """
+    Capacity is the actual capacity of the provisioned storage as it is
+     reported by the storage backend. It is unset until the Volume is
+     provisioned and it can be larger than the requested size.
+    """
+
+    ready_at: datetime = betterproto.message_field(6)
+    """
+    ReadyAt is the timestamp at which the Volume's storage was provisioned.
+    """
+
+    failure: "VolumeStatusFailure" = betterproto.message_field(7)
+    """Failure is the reason of the failure of the Volume, if any."""
+
+
+@dataclass(eq=False, repr=False)
+class VolumeStatusFailure(betterproto.Message):
+    """Failure describes the reason of the failure of a Volume."""
+
+    message: str = betterproto.string_field(1)
+    """Message is a human-readable description of the failure."""
+
+    unsupported: "VolumeStatusFailureUnsupported" = betterproto.message_field(
+        2, group="type"
+    )
+    """
+    Unsupported means that the Cluster cannot provision the Volume as it
+     is requested.
+    """
+
+    storage: "VolumeStatusFailureStorage" = betterproto.message_field(3, group="type")
+    """Storage means that the storage backend failed."""
+
+    unknown: "VolumeStatusFailureUnknown" = betterproto.message_field(4, group="type")
+    """Unknown means that the Volume failed for an unclassified reason."""
+
+
+@dataclass(eq=False, repr=False)
+class VolumeStatusFailureUnsupported(betterproto.Message):
+    """
+    Unsupported means that the Cluster is not able to provision the
+     Volume as it is requested (e.g. a SHARED Volume was requested while no
+     multi-writer storage backend is configured).
+    """
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class VolumeStatusFailureStorage(betterproto.Message):
+    """
+    Storage means that the storage backend failed to provision the Volume
+     or that the already provisioned storage was lost.
+    """
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class VolumeStatusFailureUnknown(betterproto.Message):
+    """Unknown means that the Volume failed for an unclassified reason."""
+
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class VolumeList(betterproto.Message):
+    """VolumeList is the response of the ListVolume method."""
+
+    api_version: str = betterproto.string_field(1)
+    """APIVersion is the API version (i.e. "cordium/v1")"""
+
+    kind: str = betterproto.string_field(2)
+    """Kind is the resource name (i.e. `VolumeList`)."""
+
+    items: List["Volume"] = betterproto.message_field(3)
+    """Items is the list of Volumes."""
+
+    list_response_meta: "__meta_v1__.ListResponseMeta" = betterproto.message_field(4)
+    """ListResponseMeta is common information about the list."""
+
+
+@dataclass(eq=False, repr=False)
+class ListVolumeOptions(betterproto.Message):
+    """ListVolumeOptions is the request of the ListVolume method."""
+
+    common: "__meta_v1__.CommonListOptions" = betterproto.message_field(1)
+    """
+    Common is the pagination and ordering options that are common to all the
+     List methods.
+    """
+
+    space_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
+    """SpaceRef is the reference of the Space whose Volumes are listed."""
 
 
 @dataclass(eq=False, repr=False)
@@ -3486,6 +4103,9 @@ class ClusterConfigSpec(betterproto.Message):
     workspace: "ClusterConfigSpecWorkspace" = betterproto.message_field(2)
     """Workspace is the Cluster-wide Workspace-related configuration."""
 
+    volume: "ClusterConfigSpecVolume" = betterproto.message_field(3)
+    """Volume is the Cluster-wide Volume-related configuration."""
+
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecSpace(betterproto.Message):
@@ -3562,8 +4182,9 @@ class ClusterConfigSpecWorkspaceStorage(betterproto.Message):
     )
     """
     VolumeSnapshotClass selects the VolumeSnapshotClass of the Template
-     pre-build snapshots. If it is unset or if no rule matches, the
-     Template pre-builds are disabled.
+     pre-build snapshots and of the WorkspaceSnapshots. If it is unset or
+     if no rule matches, the Cluster lets Kubernetes pick the default
+     VolumeSnapshotClass of the volume's CSI driver instead.
     """
 
 
@@ -3604,7 +4225,8 @@ class ClusterConfigSpecWorkspaceStorageStorageClassRule(betterproto.Message):
 class ClusterConfigSpecWorkspaceStorageVolumeSnapshotClass(betterproto.Message):
     """
     VolumeSnapshotClass selects the Kubernetes VolumeSnapshotClass that
-     is used for the Template pre-build snapshots.
+     is used for the Template pre-build snapshots as well as for the
+     WorkspaceSnapshots.
     """
 
     rules: List["ClusterConfigSpecWorkspaceStorageVolumeSnapshotClassRule"] = (
@@ -3623,8 +4245,8 @@ class ClusterConfigSpecWorkspaceStorageVolumeSnapshotClassRule(betterproto.Messa
     condition: "Condition" = betterproto.message_field(1)
     """
     Condition is evaluated against the request context which
-     contains the build Workspace (i.e. `ctx.workspace`) and its
-     Template (i.e. `ctx.template`).
+     contains the snapshotted Workspace (i.e. `ctx.workspace`) and
+     its Template (i.e. `ctx.template`).
     """
 
     volume_snapshot_class: str = betterproto.string_field(2)
@@ -3677,6 +4299,12 @@ class ClusterConfigSpecWorkspaceLimit(betterproto.Message):
     max_limit: "WorkspaceSpecLimit" = betterproto.message_field(6)
     """MaxLimit is a hard cap that no Workspace of the Cluster can exceed."""
 
+    max_snapshots_per_user: int = betterproto.uint32_field(7)
+    """
+    MaxSnapshotsPerUser is the maximum total number of the
+     WorkspaceSnapshots that a single User can own.
+    """
+
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecWorkspaceTimeout(betterproto.Message):
@@ -3724,6 +4352,98 @@ class ClusterConfigSpecWorkspaceRuntime(betterproto.Message):
     """
     Capabilities is the Linux capabilities that are merged into every
      Workspace of the Cluster.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecVolume(betterproto.Message):
+    """Volume is the Cluster-wide Volume-related configuration."""
+
+    storage: "ClusterConfigSpecVolumeStorage" = betterproto.message_field(1)
+    """Storage is the storage provisioning configuration of the Volumes."""
+
+    limit: "ClusterConfigSpecVolumeLimit" = betterproto.message_field(2)
+    """Limit is the Cluster-wide Volume limits."""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecVolumeStorage(betterproto.Message):
+    """Storage is the storage provisioning configuration of the Volumes."""
+
+    storage_class: "ClusterConfigSpecVolumeStorageStorageClass" = (
+        betterproto.message_field(1)
+    )
+    """
+    StorageClass selects the StorageClass of the Volumes. If it is unset
+     or if no rule matches, the Cluster lets Kubernetes pick its default
+     StorageClass instead.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecVolumeStorageStorageClass(betterproto.Message):
+    """
+    StorageClass selects the Kubernetes StorageClass that is used to
+     provision the Volumes. Since the Kubernetes API does not expose
+     whether a StorageClass is able to provide multi-writer volumes, the
+     rules are what tells the Cluster which backend to use for the SHARED
+     Volumes and which one to use for the EXCLUSIVE ones.
+    """
+
+    rules: List["ClusterConfigSpecVolumeStorageStorageClassRule"] = (
+        betterproto.message_field(1)
+    )
+    """
+    Rules is the list of the storage class selection rules. They are
+     evaluated in order and the first matching one is used.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecVolumeStorageStorageClassRule(betterproto.Message):
+    """Rule is a single storage class selection rule."""
+
+    condition: "Condition" = betterproto.message_field(1)
+    """
+    Condition is evaluated against the request context which
+     contains the Volume that is being provisioned (i.e.
+     `ctx.volume`).
+    """
+
+    storage_class: str = betterproto.string_field(2)
+    """
+    StorageClass is the name of the Kubernetes StorageClass that is
+     used once the Condition matches.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecVolumeLimit(betterproto.Message):
+    """
+    Limit is the Cluster-wide Volume limits. All the fields are optional
+     and omitting one means that no Cluster-level restriction is applied
+     for that dimension.
+    """
+
+    max_per_space: int = betterproto.uint32_field(1)
+    """
+    MaxPerSpace is the maximum total number of the Volumes that a single
+     Space can own.
+    """
+
+    max_size: "VolumeSpecSize" = betterproto.message_field(2)
+    """MaxSize is a hard cap that no Volume of the Cluster can exceed."""
+
+    default_size: "VolumeSpecSize" = betterproto.message_field(3)
+    """
+    DefaultSize is the size of the Volumes that do not request an
+     explicit one.
+    """
+
+    max_mounts_per_workspace: int = betterproto.uint32_field(4)
+    """
+    MaxMountsPerWorkspace is the maximum number of the Volumes that a
+     single Workspace can mount.
     """
 
 
@@ -4241,6 +4961,159 @@ class MainServiceStub(betterproto.ServiceStub):
             "/octelium.api.main.cordium.v1.MainService/ListWorkspace",
             list_workspace_options,
             WorkspaceList,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def create_workspace_snapshot(
+        self,
+        workspace_snapshot: "WorkspaceSnapshot",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "WorkspaceSnapshot":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/CreateWorkspaceSnapshot",
+            workspace_snapshot,
+            WorkspaceSnapshot,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def delete_workspace_snapshot(
+        self,
+        meta_v1_delete_options: "__meta_v1__.DeleteOptions",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "__meta_v1__.OperationResult":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/DeleteWorkspaceSnapshot",
+            meta_v1_delete_options,
+            __meta_v1__.OperationResult,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def list_workspace_snapshot(
+        self,
+        list_workspace_snapshot_options: "ListWorkspaceSnapshotOptions",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "WorkspaceSnapshotList":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/ListWorkspaceSnapshot",
+            list_workspace_snapshot_options,
+            WorkspaceSnapshotList,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def get_workspace_snapshot(
+        self,
+        meta_v1_get_options: "__meta_v1__.GetOptions",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "WorkspaceSnapshot":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/GetWorkspaceSnapshot",
+            meta_v1_get_options,
+            WorkspaceSnapshot,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def create_volume(
+        self,
+        volume: "Volume",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "Volume":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/CreateVolume",
+            volume,
+            Volume,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def update_volume(
+        self,
+        volume: "Volume",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "Volume":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/UpdateVolume",
+            volume,
+            Volume,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def delete_volume(
+        self,
+        meta_v1_delete_options: "__meta_v1__.DeleteOptions",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "__meta_v1__.OperationResult":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/DeleteVolume",
+            meta_v1_delete_options,
+            __meta_v1__.OperationResult,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def list_volume(
+        self,
+        list_volume_options: "ListVolumeOptions",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "VolumeList":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/ListVolume",
+            list_volume_options,
+            VolumeList,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def get_volume(
+        self,
+        meta_v1_get_options: "__meta_v1__.GetOptions",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "Volume":
+        return await self._unary_unary(
+            "/octelium.api.main.cordium.v1.MainService/GetVolume",
+            meta_v1_get_options,
+            Volume,
             timeout=timeout,
             deadline=deadline,
             metadata=metadata,
@@ -4914,6 +5787,47 @@ class MainServiceBase(ServiceBase):
     ) -> "WorkspaceList":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
+    async def create_workspace_snapshot(
+        self, workspace_snapshot: "WorkspaceSnapshot"
+    ) -> "WorkspaceSnapshot":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def delete_workspace_snapshot(
+        self, meta_v1_delete_options: "__meta_v1__.DeleteOptions"
+    ) -> "__meta_v1__.OperationResult":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def list_workspace_snapshot(
+        self, list_workspace_snapshot_options: "ListWorkspaceSnapshotOptions"
+    ) -> "WorkspaceSnapshotList":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def get_workspace_snapshot(
+        self, meta_v1_get_options: "__meta_v1__.GetOptions"
+    ) -> "WorkspaceSnapshot":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def create_volume(self, volume: "Volume") -> "Volume":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def update_volume(self, volume: "Volume") -> "Volume":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def delete_volume(
+        self, meta_v1_delete_options: "__meta_v1__.DeleteOptions"
+    ) -> "__meta_v1__.OperationResult":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def list_volume(
+        self, list_volume_options: "ListVolumeOptions"
+    ) -> "VolumeList":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def get_volume(
+        self, meta_v1_get_options: "__meta_v1__.GetOptions"
+    ) -> "Volume":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
     async def start_workspace(
         self, start_workspace_request: "StartWorkspaceRequest"
     ) -> "StartWorkspaceResponse":
@@ -5185,6 +6099,72 @@ class MainServiceBase(ServiceBase):
     ) -> None:
         request = await stream.recv_message()
         response = await self.list_workspace(request)
+        await stream.send_message(response)
+
+    async def __rpc_create_workspace_snapshot(
+        self, stream: "grpclib.server.Stream[WorkspaceSnapshot, WorkspaceSnapshot]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.create_workspace_snapshot(request)
+        await stream.send_message(response)
+
+    async def __rpc_delete_workspace_snapshot(
+        self,
+        stream: "grpclib.server.Stream[__meta_v1__.DeleteOptions, __meta_v1__.OperationResult]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.delete_workspace_snapshot(request)
+        await stream.send_message(response)
+
+    async def __rpc_list_workspace_snapshot(
+        self,
+        stream: "grpclib.server.Stream[ListWorkspaceSnapshotOptions, WorkspaceSnapshotList]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.list_workspace_snapshot(request)
+        await stream.send_message(response)
+
+    async def __rpc_get_workspace_snapshot(
+        self, stream: "grpclib.server.Stream[__meta_v1__.GetOptions, WorkspaceSnapshot]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.get_workspace_snapshot(request)
+        await stream.send_message(response)
+
+    async def __rpc_create_volume(
+        self, stream: "grpclib.server.Stream[Volume, Volume]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.create_volume(request)
+        await stream.send_message(response)
+
+    async def __rpc_update_volume(
+        self, stream: "grpclib.server.Stream[Volume, Volume]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.update_volume(request)
+        await stream.send_message(response)
+
+    async def __rpc_delete_volume(
+        self,
+        stream: "grpclib.server.Stream[__meta_v1__.DeleteOptions, __meta_v1__.OperationResult]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.delete_volume(request)
+        await stream.send_message(response)
+
+    async def __rpc_list_volume(
+        self, stream: "grpclib.server.Stream[ListVolumeOptions, VolumeList]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.list_volume(request)
+        await stream.send_message(response)
+
+    async def __rpc_get_volume(
+        self, stream: "grpclib.server.Stream[__meta_v1__.GetOptions, Volume]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.get_volume(request)
         await stream.send_message(response)
 
     async def __rpc_start_workspace(
@@ -5496,6 +6476,60 @@ class MainServiceBase(ServiceBase):
                 grpclib.const.Cardinality.UNARY_UNARY,
                 ListWorkspaceOptions,
                 WorkspaceList,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/CreateWorkspaceSnapshot": grpclib.const.Handler(
+                self.__rpc_create_workspace_snapshot,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                WorkspaceSnapshot,
+                WorkspaceSnapshot,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/DeleteWorkspaceSnapshot": grpclib.const.Handler(
+                self.__rpc_delete_workspace_snapshot,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                __meta_v1__.DeleteOptions,
+                __meta_v1__.OperationResult,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/ListWorkspaceSnapshot": grpclib.const.Handler(
+                self.__rpc_list_workspace_snapshot,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                ListWorkspaceSnapshotOptions,
+                WorkspaceSnapshotList,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/GetWorkspaceSnapshot": grpclib.const.Handler(
+                self.__rpc_get_workspace_snapshot,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                __meta_v1__.GetOptions,
+                WorkspaceSnapshot,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/CreateVolume": grpclib.const.Handler(
+                self.__rpc_create_volume,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                Volume,
+                Volume,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/UpdateVolume": grpclib.const.Handler(
+                self.__rpc_update_volume,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                Volume,
+                Volume,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/DeleteVolume": grpclib.const.Handler(
+                self.__rpc_delete_volume,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                __meta_v1__.DeleteOptions,
+                __meta_v1__.OperationResult,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/ListVolume": grpclib.const.Handler(
+                self.__rpc_list_volume,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                ListVolumeOptions,
+                VolumeList,
+            ),
+            "/octelium.api.main.cordium.v1.MainService/GetVolume": grpclib.const.Handler(
+                self.__rpc_get_volume,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                __meta_v1__.GetOptions,
+                Volume,
             ),
             "/octelium.api.main.cordium.v1.MainService/StartWorkspace": grpclib.const.Handler(
                 self.__rpc_start_workspace,

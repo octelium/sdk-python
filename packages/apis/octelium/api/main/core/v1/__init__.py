@@ -905,7 +905,26 @@ class ServiceSpecConfigPostgresSslMode(betterproto.Enum):
     """
     REQUIRE sets SSL mode to "require". This is extremely recommended
      over the default "prefer" mode if the upstream is listening over
-     TLS which is the case for SaaS databases.
+     TLS which is the case for SaaS databases. Note that it encrypts the
+     connection without verifying the upstream's certificate at all.
+    """
+
+    VERIFY_CA = 3
+    """
+    VERIFY_CA sets SSL mode to "verify-ca". It additionally verifies
+     that the upstream's certificate chains up to a trusted certificate
+     authority without verifying the upstream's hostname. The trusted
+     certificate authorities are set by the `tls` Configuration field
+     and they default to the system's ones.
+    """
+
+    VERIFY_FULL = 4
+    """
+    VERIFY_FULL sets SSL mode to "verify-full". It additionally
+     verifies both the upstream's certificate chain and its hostname.
+     The trusted certificate authorities are set by the `tls`
+     Configuration field and they default to the system's ones. This is
+     the recommended mode for the upstreams that are listening over TLS.
     """
 
 
@@ -918,6 +937,25 @@ class ServiceSpecConfigPostgresAuthorizationMode(betterproto.Enum):
     ALL = 1
     """
     ALL forces authorization for every PostgreSQL command (e.g. query
+     commands) not just at the beginning of the connection
+    """
+
+    NONE = 2
+    """
+    NONE which is currently the default behavior enforces
+     authorization only at the beginning of the connection
+    """
+
+
+class ServiceSpecConfigMySqlAuthorizationMode(betterproto.Enum):
+    """Mode sets when the authorization is enforced"""
+
+    MODE_UNSET = 0
+    """MODE_UNSET uses the default configuration which is currently NONE"""
+
+    ALL = 1
+    """
+    ALL forces authorization for every MySQL command (e.g. query
      commands) not just at the beginning of the connection
     """
 
@@ -1208,13 +1246,16 @@ class DeviceStatusOsType(betterproto.Enum):
     """ANDROID means that the Device runs Android"""
 
     IOS = 5
-    """IOS means that the Device runs iOS"""
+    """IOS means that the Device runs iOS or iPadOS"""
+
+    CHROMEOS = 6
+    """CHROMEOS means that the Device runs ChromeOS"""
 
 
 class DeviceStatusPostureRiskLevel(betterproto.Enum):
     """
     RiskLevel is the overall risk level of the Device as assessed by the
-     provider
+     provider itself
     """
 
     RISK_LEVEL_UNKNOWN = 0
@@ -1234,21 +1275,12 @@ class DeviceStatusPostureRiskLevel(betterproto.Enum):
 
 
 class DeviceStatusPostureSignalState(betterproto.Enum):
-    """
-    SignalState semantics under the single-provider model: adapters MUST
-     set NOT_APPLICABLE for every named signal outside their provider's
-     domain (an EDR adapter sets compliant = NOT_APPLICABLE, an MDM
-     adapter sets threatFree = NOT_APPLICABLE). SIGNAL_STATE_UNKNOWN is
-     reserved for "the provider should know this but did not report it"
-     and fails closed in policy. Leaving a signal UNKNOWN when it is
-     actually out-of-domain will lock devices out under any policy that
-     requires that signal.
-    """
+    """SignalState is the state of a posture signal"""
 
     SIGNAL_STATE_UNKNOWN = 0
     """
-    SIGNAL_STATE_UNKNOWN means that the provider should know this signal
-     but did not report it. It fails closed in policy.
+    SIGNAL_STATE_UNKNOWN means that the provider did not report the
+     signal
     """
 
     PASS = 1
@@ -1259,8 +1291,8 @@ class DeviceStatusPostureSignalState(betterproto.Enum):
 
     NOT_APPLICABLE = 3
     """
-    NOT_APPLICABLE means that the signal is outside the provider's
-     domain
+    NOT_APPLICABLE means that the signal cannot apply to the Device's
+     platform
     """
 
 
@@ -1270,54 +1302,92 @@ class DeviceStatusBindingState(betterproto.Enum):
     STATE_UNKNOWN = 0
     """STATE_UNKNOWN is not used"""
 
-    WAITING_APPROVAL = 1
+    ACCEPTED = 1
+    """ACCEPTED means that the Device is bound to the inventory entry"""
+
+    AMBIGUOUS = 2
     """
-    WAITING_APPROVAL means a unique candidate exists and MANUAL
-     approval mode requires administrator action before acceptance.
-     Expiry (per expiresAt) clears the Binding rather than tombstoning
-     it, so a later attempt can retry.
+    AMBIGUOUS means that the Device could not be resolved to a unique
+     inventory entry of the DeviceManager
     """
 
-    ACCEPTED = 2
+    CONFLICT = 3
     """
-    ACCEPTED means that the Device is bound to ownerRef. It is a sticky
-     state that is cleared only by reset.
-    """
-
-    REJECTED = 3
-    """
-    REJECTED is a sticky record that this Device must not bind to
-     ownerRef, set by administrator rejection or by losing a uniqueness
-     claim to another Device. Cleared only by reset.
-    """
-
-    AMBIGUOUS = 4
-    """
-    AMBIGUOUS means candidate selection could not resolve uniquely:
-     multiple DeviceManagers matched at equal priority, a provider
-     inventory matched non-uniquely, or probe and identity sources
-     disagreed within one DeviceManager. The specifics are in message.
-     Recomputed on each reconcile; clears itself once resolved.
+    CONFLICT means that the inventory entry is already bound to another
+     Device. It is retried once the other Binding is released.
     """
 
 
-class DeviceStatusBindingAcceptanceMethod(betterproto.Enum):
-    """AcceptanceMethod is how the Binding was accepted"""
+class DeviceStatusBindingValidity(betterproto.Enum):
+    """Validity is whether an ACCEPTED Binding is currently usable"""
 
-    ACCEPTANCE_METHOD_UNKNOWN = 0
-    """ACCEPTANCE_METHOD_UNKNOWN is not used"""
+    VALIDITY_UNKNOWN = 0
+    """VALIDITY_UNKNOWN is not used"""
 
-    AUTOMATIC = 1
-    """AUTOMATIC means that the Binding was accepted automatically"""
+    VALID = 1
+    """VALID means that the Binding is verified and its Posture is usable"""
 
-    EMAIL = 2
+    SUSPENDED = 2
     """
-    EMAIL means that the Binding was accepted by the User via an email
-     confirmation
+    SUSPENDED means that the Binding could not be verified and the
+     Posture must not be used until it is verified again
     """
 
-    MANUAL = 3
-    """MANUAL means that the Binding was accepted by an administrator"""
+    LOST = 3
+    """
+    LOST means that the inventory entry no longer exists or no longer
+     applies to the Device
+    """
+
+
+class DeviceStatusProbeAttemptState(betterproto.Enum):
+    """State is the state of the ProbeAttempt"""
+
+    STATE_UNKNOWN = 0
+    """STATE_UNKNOWN is not used"""
+
+    ISSUED = 1
+    """
+    ISSUED means that the Probes were issued and the Cluster is waiting
+     for their Results
+    """
+
+    SUBMITTED = 2
+    """
+    SUBMITTED means that the Results were submitted and are waiting to
+     be processed
+    """
+
+    PROCESSED = 3
+    """PROCESSED means that the Results were processed"""
+
+
+class DeviceStatusProbeAttemptResultStatus(betterproto.Enum):
+    """Status is the outcome of running the Probe"""
+
+    STATUS_UNKNOWN = 0
+    """STATUS_UNKNOWN is not used"""
+
+    OK = 1
+    """OK means that the Probe succeeded"""
+
+    NOT_FOUND = 2
+    """NOT_FOUND means that the probed item does not exist on the Device"""
+
+    UNSUPPORTED = 3
+    """UNSUPPORTED means that the client does not support the Probe"""
+
+    PERMISSION_REQUIRED = 4
+    """
+    PERMISSION_REQUIRED means that running the Probe requires
+     privileges that the client does not have
+    """
+
+    TIMEOUT = 5
+    """TIMEOUT means that running the Probe timed out"""
+
+    FAILED = 6
+    """FAILED means that running the Probe failed"""
 
 
 class PolicySpecRuleEffect(betterproto.Enum):
@@ -2156,6 +2226,31 @@ class ClusterConfigStatusNetworkConfigMode(betterproto.Enum):
     V4_ONLY sets the Cluster to operate in IPv4-only mode.
      Services receive IPv4-only private addresses and clients can connect
      only connect via IPv4-only modes.
+    """
+
+
+class ClusterConfigStatusDeviceProbePlatformIdentifierKind(betterproto.Enum):
+    """Kind is the kind of the identifier"""
+
+    KIND_UNKNOWN = 0
+    """KIND_UNKNOWN is not used"""
+
+    HARDWARE_SERIAL = 1
+    """HARDWARE_SERIAL is the hardware serial number"""
+
+    HARDWARE_UUID = 2
+    """HARDWARE_UUID is the hardware UUID (e.g. the SMBIOS UUID)"""
+
+    OS_INSTALLATION_ID = 3
+    """
+    OS_INSTALLATION_ID is the identifier of the operating system
+     installation (e.g. the machine ID)
+    """
+
+    MAC_ADDRESS = 4
+    """
+    MAC_ADDRESS is the list of the MAC addresses of the Device's
+     physical network interfaces
     """
 
 
@@ -4373,11 +4468,12 @@ class ServiceSpecConfigLlm(betterproto.Message):
      default, the downstream request path is proxied to the upstream as
      is. The upstreams that serve neither of these two shapes are
      supported via the `path` field instead. If not set, which is the
-     default, the OPENAI protocol is used. Note that Octelium currently proxies the
-     requests to the upstream in the same protocol that it accepts them
-     from the downstreams, it does not translate between the protocols.
-     This field has to be set in the "default" or global Configuration
-     (as opposed to named dynamic Configs) in order to actually work.
+     default, the OPENAI protocol is used. Note that this is the protocol
+     that the downstreams speak as well as the one that the upstream
+     speaks, unless a `translation` is set, which is what makes the two
+     differ. This field has to be set in the "default" or global
+     Configuration (as opposed to named dynamic Configs) in order to
+     actually work.
     """
 
     model: "ServiceSpecConfigLlmModel" = betterproto.message_field(2)
@@ -4472,6 +4568,16 @@ class ServiceSpecConfigLlm(betterproto.Message):
      SemanticRouter Plugin that sets an `embedding` of its own uses that
      one instead. A Plugin which needs an embedding while neither is set
      is rejected rather than silently disabled.
+    """
+
+    translation: "ServiceSpecConfigLlmTranslation" = betterproto.message_field(14)
+    """
+    Translation converts the requests and the responses between the
+     protocol that the Service serves to its downstreams and the
+     protocol that its upstream speaks. If not set, which is the
+     default, the two are the same protocol and nothing is translated.
+     This field has to be set in the "default" or global Configuration
+     (as opposed to named dynamic Configs) in order to actually work.
     """
 
 
@@ -4698,6 +4804,120 @@ class ServiceSpecConfigLlmEmbeddingSourceUpstream(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class ServiceSpecConfigLlmTranslation(betterproto.Message):
+    """
+    Translation converts the inference requests and responses between
+     the protocol that the Service serves to its downstreams, which is
+     the `protocol` field, and the protocol that its upstream speaks.
+     Without it the two are the same protocol and Octelium proxies the
+     requests to the upstream in whichever protocol it accepted them
+     from the downstreams, which is the default.
+
+     It is what lets an OpenAI SDK client, an Anthropic SDK client and a
+     coding agent that speaks one of them reach an upstream that serves
+     the other one, with every Policy, Plugin and AccessLog of the
+     Service continuing to read the request exactly as the downstream
+     sent it. A translation is applied after every inference-specific
+     Plugin, so a Guardrail inspects what the downstream wrote, a Prompt
+     and a Tools Plugin manipulate the downstream's own protocol, a
+     SemanticCache stores the response in the downstream's own protocol,
+     and the conversion to the upstream protocol is the last thing that
+     happens to a request before its credentials and its path are
+     applied.
+
+     Octelium translates a deliberately bounded subset rather than every
+     field of every protocol, and it rejects the requests that carry a
+     feature outside that subset instead of silently dropping it, since
+     a request that is quietly turned into a materially different one is
+     worse than a request that is refused. The subset is the text,
+     image, system instruction, multi-turn history, client tool, tool
+     call, tool result, tool choice, stop sequence, output limit,
+     sampling, streaming and usage surface that the protocols have in
+     common. The provider-specific features that no other protocol
+     defines (e.g. the OpenAI logprobs, logit biases, penalties, seeds
+     and structured outputs, the Anthropic top_k sampling, thinking
+     blocks, assistant prefills, documents, citations and server tools,
+     the Gemini safety settings, cached content, multiple candidates and
+     built-in tools, and the Bedrock guardrail configuration, prompt
+     variables and additional model request fields) are rejected. The
+     prompt cache controls of a protocol that the target protocol does
+     not define are dropped rather than rejected, since they change what
+     a request costs rather than what it generates. The tool schemas are
+     proxied verbatim rather than rewritten, so a schema that the target
+     model does not accept is rejected by the provider itself rather
+     than silently stripped of its constraints.
+
+     Note that the Gemini models which sign their tool calls require
+     that signature to be returned on the next turn of the conversation,
+     while no other protocol has anywhere to carry it. Octelium
+     therefore retains those signatures itself, bound to the Session
+     that received them and to the upstream model that issued them, for
+     as long as a turn plausibly continues, and restores them into the
+     translated requests. Nothing of the reasoning content itself is
+     ever exposed to a downstream that did not receive it.
+
+     Note that a reasoning configuration that a downstream requested for
+     itself is translated only where the two protocols express reasoning
+     in the same terms, which the API of a model that accepts an ordinal
+     effort and the API of a model that accepts a numeric token budget
+     do not. Set the Service's own `reasoning` field, or a Reasoning
+     Plugin, in order to own the reasoning configuration of the
+     translated requests: it is resolved against the upstream protocol
+     and encoded into the upstream request, which is exactly the case
+     that a portable Level is written for.
+    """
+
+    upstream_protocol: "ServiceSpecConfigLlmProtocol" = betterproto.enum_field(1)
+    """
+    UpstreamProtocol is the inference API protocol spoken by the
+     upstream. It is the field that enables the translation: whenever
+     it is unset, or set to the same protocol as the `protocol` field,
+     no translation is performed at all and the requests are proxied
+     in the protocol that the downstreams themselves used.
+    
+     Every protocol currently translates to every other one, for the
+     generation operation that each of them defines, which is the
+     `CHAT_COMPLETIONS` route of the OPENAI protocol, the `MESSAGES`
+     route of the ANTHROPIC one, the `GENERATE_CONTENT` route of the
+     GEMINI one and the `CONVERSE` route of the BEDROCK one, together
+     with their streaming forms. The other operations, which have no
+     counterpart at all in one another (e.g. embeddings, moderations,
+     token counting, model listing and the Bedrock InvokeModel
+     operations whose bodies are model-native), are rejected rather
+     than proxied, since an upstream that speaks another protocol
+     serves none of them.
+    
+     Note that the GEMINI and the BEDROCK protocols name the model in
+     the request path rather than in the request body, so a translated
+     request is addressed to the model that the Service resolved for
+     it, which is the one that the Model field, a Model Plugin or a
+     SemanticRouter Plugin decided and otherwise the one that the
+     downstream itself requested. A model name that the target
+     protocol cannot address is rejected rather than rewritten.
+    """
+
+    default_max_output_tokens: int = betterproto.uint64_field(2)
+    """
+    DefaultMaxOutputTokens is the maximum output token count that is
+     served to an upstream whose protocol requires one while the
+     downstream protocol allows omitting it, which is the case for an
+     ANTHROPIC upstream serving the requests of an OPENAI downstream.
+     It is only used for the requests that declare no output limit of
+     their own. Zero uses Octelium's own default. Note that it is a
+     translation behavior rather than something that the downstream
+     asked for, so the `ctx.request.llm.maxOutputTokens` field and the
+     AccessLogs keep reporting zero for such a request, and that the
+     `limits.maxOutputTokens` field bounds it in the same way that it
+     bounds a downstream's own limit. It is only needed for an
+     ANTHROPIC upstream, since the other protocols let a request
+     declare no output limit at all. Note also that a reasoning token
+     budget which the Service itself decided is added on top of it,
+     since a model whose output limit does not exceed its own reasoning
+     budget rejects the request outright.
+    """
+
+
+@dataclass(eq=False, repr=False)
 class ServiceSpecConfigLlmLimits(betterproto.Message):
     """Limits sets the LLM request parsing and inference limits"""
 
@@ -4897,6 +5117,12 @@ class ServiceSpecConfigLlmPlugin(betterproto.Message):
      configuration that the SemanticCache and the SemanticRouter Plugins
      read whenever they set none of their own, so that a Service which
      uses both of them describes its embedding backend once.
+
+     A `translation`, whenever the Configuration sets one, sits outside
+     that order as well: it is applied to a request after every
+     inference-specific Plugin and to a response before every one of
+     them, so that every Plugin reads and writes the protocol that the
+     downstream itself used rather than the one that the upstream speaks.
 
      Note that the Plugins which reuse the HTTP mode's own types sit
      outside that order and outside the Guardrail boundary: they run
@@ -6123,6 +6349,9 @@ class ServiceSpecConfigPostgres(betterproto.Message):
     )
     """Authorization sets PostgreSQL-specific authorization configuration"""
 
+    visibility: "ServiceSpecConfigPostgresVisibility" = betterproto.message_field(6)
+    """Visibility sets the visibility/access logging specific options"""
+
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigPostgresAuth(betterproto.Message):
@@ -6160,6 +6389,20 @@ class ServiceSpecConfigPostgresAuthorization(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class ServiceSpecConfigPostgresVisibility(betterproto.Message):
+    """Visibility sets the PostgreSQL-specific access logging configuration"""
+
+    disable_query: bool = betterproto.bool_field(1)
+    """
+    DisableQuery disables recording the statement text of the query
+     and parse messages in the access logs. The access log entries
+     themselves are still recorded without the statement text. This is
+     recommended for databases whose statements routinely embed
+     credentials or other sensitive values.
+    """
+
+
+@dataclass(eq=False, repr=False)
 class ServiceSpecConfigMySql(betterproto.Message):
     """MySQL sets the MySQL-specific configuration"""
 
@@ -6187,6 +6430,12 @@ class ServiceSpecConfigMySql(betterproto.Message):
      upstream database is listening over TLS.
     """
 
+    visibility: "ServiceSpecConfigMySqlVisibility" = betterproto.message_field(5)
+    """Visibility sets the visibility/access logging specific options"""
+
+    authorization: "ServiceSpecConfigMySqlAuthorization" = betterproto.message_field(6)
+    """Authorization sets MySQL-specific authorization configuration"""
+
 
 @dataclass(eq=False, repr=False)
 class ServiceSpecConfigMySqlAuth(betterproto.Message):
@@ -6209,6 +6458,28 @@ class ServiceSpecConfigMySqlAuthPassword(betterproto.Message):
     """
     FromSecret sets the name of the Secret whose value contains
      the Password
+    """
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigMySqlAuthorization(betterproto.Message):
+    """Authorization sets the MySQL-specific authorization configuration"""
+
+    mode: "ServiceSpecConfigMySqlAuthorizationMode" = betterproto.enum_field(1)
+    """Mode is the authorization mode"""
+
+
+@dataclass(eq=False, repr=False)
+class ServiceSpecConfigMySqlVisibility(betterproto.Message):
+    """Visibility sets the MySQL-specific access logging configuration"""
+
+    disable_query: bool = betterproto.bool_field(1)
+    """
+    DisableQuery disables recording the statement text of the query
+     and prepare statement commands in the access logs. The access log
+     entries themselves are still recorded without the statement text.
+     This is recommended for databases whose statements routinely embed
+     credentials or other sensitive values.
     """
 
 
@@ -8293,7 +8564,10 @@ class DeviceStatus(betterproto.Message):
     """
 
     serial_number: str = betterproto.string_field(6)
-    """SerialNumber is the Device's hardware serial number"""
+    """
+    SerialNumber is the Device's hardware serial number reported by the
+     client at registration. It is not a verified identity.
+    """
 
     is_locked: bool = betterproto.bool_field(7)
     """IsLocked indicates whether the Device is locked by the Cluster"""
@@ -8301,17 +8575,22 @@ class DeviceStatus(betterproto.Message):
     mac_addresses: List[str] = betterproto.string_field(8)
     """
     MacAddresses is the list of the MAC addresses of the Device's network
-     interfaces
+     interfaces reported by the client at registration. They are not a
+     verified identity.
     """
 
     posture: "DeviceStatusPosture" = betterproto.message_field(9)
     """
-    Posture is the Device's security posture as reported by the
-     DeviceManager that the Device is bound to
+    Posture is the last posture collected from the bound DeviceManager. In
+     the authorization context, it is only exposed while the Binding is
+     ACCEPTED and VALID and the Posture has not expired. Otherwise, it is
+     omitted so that CEL expressions do not need to check these conditions.
     """
 
     binding: "DeviceStatusBinding" = betterproto.message_field(10)
-    """Binding is the link between the Device and its DeviceManager"""
+    """
+    Binding is the Device's link to its single authoritative DeviceManager
+    """
 
     probe_attempt: "DeviceStatusProbeAttempt" = betterproto.message_field(11)
     """ProbeAttempt is the most recent device probing attempt"""
@@ -8320,9 +8599,10 @@ class DeviceStatus(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class DeviceStatusPosture(betterproto.Message):
     """
-    Posture is the Device's security posture as reported by the
-     DeviceManager that the Device is bound to (e.g. an EDR or an MDM
-     provider). It is only valid while binding.state is ACCEPTED.
+    Posture is the security posture reported by the Device's bound
+     DeviceManager. Common signals have dedicated fields for use in CEL.
+     A signal is satisfied only when its state is PASS; unknown and
+     inapplicable signals do not satisfy a posture requirement.
     """
 
     risk_level: "DeviceStatusPostureRiskLevel" = betterproto.enum_field(1)
@@ -8332,26 +8612,27 @@ class DeviceStatusPosture(betterproto.Message):
     """
 
     disk_encryption: "DeviceStatusPostureSignalState" = betterproto.enum_field(2)
-    """DiskEncryption reports whether the Device's disk is encrypted"""
+    """
+    DiskEncryption is PASS when the provider reports that the Device's
+     disk encryption requirements are satisfied
+    """
 
     compliant: "DeviceStatusPostureSignalState" = betterproto.enum_field(3)
     """
-    Compliant reports whether the Device is compliant with the provider's
-     policies. It is typically reported by the MDM providers.
+    Compliant is PASS when the Device meets the provider's compliance
+     policy
     """
 
     threat_free: "DeviceStatusPostureSignalState" = betterproto.enum_field(4)
-    """
-    ThreatFree reports whether the Device is free of the threats detected
-     by the provider. It is typically reported by the EDR providers.
-    """
+    """ThreatFree is PASS when the provider reports no active threats"""
 
     signals: Dict[str, "DeviceStatusPostureSignalState"] = betterproto.map_field(
         5, betterproto.TYPE_STRING, betterproto.TYPE_ENUM
     )
     """
-    Signals is the map of the additional provider-specific signals keyed
-     by the signal's name
+    Signals contains additional provider-specific signals keyed by
+     `x.<provider>.<name>`. Signals that have a dedicated field are never
+     duplicated in this map.
     """
 
     last_sync_at: datetime = betterproto.message_field(6)
@@ -8368,80 +8649,124 @@ class DeviceStatusPosture(betterproto.Message):
 
     expires_at: datetime = betterproto.message_field(8)
     """
-    The PDP MUST treat posture with expiresAt in the past as absent.
-     The device watcher additionally clears expired posture as hygiene.
+    ExpiresAt is the timestamp after which the Posture is no longer valid.
+     The Cluster evaluates it using its own clock. It is never later than
+     the expiry of the oldest provider observation represented by the
+     Posture, so polling does not refresh the lifetime of an old
+     observation.
     """
 
     attrs: "betterproto_lib_google_protobuf.Struct" = betterproto.message_field(9)
     """
     Attrs is a map of the additional provider-specific attributes of the
-     Device. It is mostly used in authorization rules.
+     Device
+    """
+
+    firewall: "DeviceStatusPostureSignalState" = betterproto.enum_field(10)
+    """
+    Firewall is PASS when the provider reports the Device's firewall as
+     enabled
+    """
+
+    screen_lock: "DeviceStatusPostureSignalState" = betterproto.enum_field(11)
+    """
+    ScreenLock is PASS when the Device meets the provider's screen lock
+     requirements
+    """
+
+    secure_boot: "DeviceStatusPostureSignalState" = betterproto.enum_field(12)
+    """SecureBoot is PASS when the provider reports secure boot as enabled"""
+
+    os_up_to_date: "DeviceStatusPostureSignalState" = betterproto.enum_field(13)
+    """
+    OSUpToDate is PASS when the Device meets the provider's OS update
+     requirements
+    """
+
+    agent_healthy: "DeviceStatusPostureSignalState" = betterproto.enum_field(14)
+    """
+    AgentHealthy is PASS when the provider reports its agent on the
+     Device as installed, running and recently reporting
+    """
+
+    enrolled: "DeviceStatusPostureSignalState" = betterproto.enum_field(15)
+    """
+    Enrolled is PASS when the provider reports the Device as enrolled in
+     its management system
+    """
+
+    not_contained: "DeviceStatusPostureSignalState" = betterproto.enum_field(16)
+    """
+    NotContained is PASS when the provider reports that the Device is not
+     isolated or contained
+    """
+
+    mobile_integrity: "DeviceStatusPostureSignalState" = betterproto.enum_field(17)
+    """
+    MobileIntegrity is PASS when the provider reports that the mobile
+     Device is neither jailbroken nor rooted
     """
 
 
 @dataclass(eq=False, repr=False)
 class DeviceStatusBinding(betterproto.Message):
     """
-    Binding is the singular, quasi-permanent link between this Device and
-     one DeviceManager. ownerRef lives here and only here; Posture validity
-     is defined as binding.state == ACCEPTED, so Posture does not carry a
-     duplicate ownerRef that could diverge.
-
-     ACCEPTED and REJECTED are both sticky: reconciliation never overwrites
-     them, and only ResetDeviceBinding / ResetDeviceManagerBindings (or
-     DeviceManager deletion, which auto-resets) clears them. There is no
-     PENDING or EXPIRED state: attempt lifecycle belongs to ProbeAttempt,
-     and an unbound Device simply has no Binding, so nothing dead-ends.
+    Binding is the Device's link to one inventory entry of its single
+     authoritative DeviceManager. An ACCEPTED Binding is kept through
+     provider outages until it is explicitly reset or its DeviceManager is
+     deleted. A Binding that is not VALID makes the Posture unavailable; it
+     never causes a fallback to another DeviceManager.
     """
 
     uid: str = betterproto.string_field(1)
-    """UID is the unique identifier of the Binding"""
+    """
+    UID is the unique identifier of the Binding. Resetting the Binding or
+     selecting another DeviceManager or inventory entry creates a new UID.
+    """
 
     owner_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
-    """
-    OwnerRef is the reference of the DeviceManager that the Device is
-     bound to
-    """
+    """OwnerRef is the reference of the DeviceManager of the Binding"""
 
     external_id: str = betterproto.string_field(3)
     """
-    ExternalID is the identifier of the Device according to the
+    ExternalID is the identifier of the inventory entry in the
      DeviceManager's provider
     """
 
     state: "DeviceStatusBindingState" = betterproto.enum_field(4)
     """State is the state of the Binding"""
 
-    acceptance_method: "DeviceStatusBindingAcceptanceMethod" = betterproto.enum_field(5)
-    """AcceptanceMethod is how the Binding was accepted"""
+    validity: "DeviceStatusBindingValidity" = betterproto.enum_field(5)
+    """Validity is whether an ACCEPTED Binding is currently usable"""
 
-    accepted_at: datetime = betterproto.message_field(6)
+    reason: str = betterproto.string_field(6)
+    """
+    Reason is a machine-readable reason of the current State and Validity
+    """
+
+    message: str = betterproto.string_field(7)
+    """Message is a human-readable message that explains Reason"""
+
+    accepted_at: datetime = betterproto.message_field(8)
     """AcceptedAt is the timestamp at which the Binding was accepted"""
 
-    expires_at: datetime = betterproto.message_field(7)
-    """
-    ExpiresAt is the timestamp at which a WAITING_APPROVAL Binding
-     expires. Expiry clears the Binding so that a later attempt can retry.
-    """
-
-    last_verified_at: datetime = betterproto.message_field(8)
+    last_verified_at: datetime = betterproto.message_field(9)
     """
     LastVerifiedAt is the timestamp at which the Binding was last verified
     """
 
-    verification_failures: int = betterproto.uint32_field(9)
+    next_verification_at: datetime = betterproto.message_field(10)
     """
-    VerificationFailures is the number of the consecutive failures to
-     verify the Binding
+    NextVerificationAt is the timestamp after which the Device is probed
+     again to verify the Binding
     """
 
 
 @dataclass(eq=False, repr=False)
 class DeviceStatusProbeAttempt(betterproto.Message):
     """
-    ProbeAttempt is the most recent attempt to run the Cluster's device
-     probes on the Device in order to collect the information used to bind it
-     to a DeviceManager
+    ProbeAttempt is the most recent attempt to run the Cluster's Probes on
+     the Device to collect evidence for selecting or verifying its Binding
     """
 
     uid: str = betterproto.string_field(1)
@@ -8451,13 +8776,28 @@ class DeviceStatusProbeAttempt(betterproto.Message):
     """StartedAt is the timestamp at which the ProbeAttempt started"""
 
     probes: List["ClusterConfigStatusDeviceProbe"] = betterproto.message_field(3)
-    """
-    Probes is the list of the Probes that were requested to be run on the
-     Device
-    """
+    """Probes is the list of the Probes that were issued to the Device"""
 
     results: List["DeviceStatusProbeAttemptResult"] = betterproto.message_field(4)
-    """Results is the list of the results of the requested Probes"""
+    """Results is the list of the Results of the issued Probes"""
+
+    state: "DeviceStatusProbeAttemptState" = betterproto.enum_field(5)
+    """State is the state of the ProbeAttempt"""
+
+    expires_at: datetime = betterproto.message_field(6)
+    """
+    ExpiresAt is the timestamp after which the ProbeAttempt can no longer
+     be completed. The Cluster evaluates it using its own clock.
+    """
+
+    submitted_at: datetime = betterproto.message_field(7)
+    """SubmittedAt is the timestamp at which the Results were submitted"""
+
+    session_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(8)
+    """
+    SessionRef is a reference to the Session that started the
+     ProbeAttempt
+    """
 
 
 @dataclass(eq=False, repr=False)
@@ -8465,13 +8805,38 @@ class DeviceStatusProbeAttemptResult(betterproto.Message):
     """Result is the result of running a single Probe"""
 
     probe_id: str = betterproto.string_field(1)
-    """ProbeID is the identifier of the Probe that produced the Result"""
+    """ProbeID is the ID of the Probe that produced the Result"""
 
-    output: bytes = betterproto.bytes_field(2, group="type")
-    """Output is the raw output produced by the Probe"""
+    status: "DeviceStatusProbeAttemptResultStatus" = betterproto.enum_field(2)
+    """Status is the outcome of running the Probe"""
 
-    error: str = betterproto.string_field(3, group="type")
-    """Error is the error message if running the Probe failed"""
+    text: str = betterproto.string_field(3, group="value")
+    """Text is a textual value"""
+
+    data: bytes = betterproto.bytes_field(4, group="value")
+    """Data is a binary value"""
+
+    list: "DeviceStatusProbeAttemptResultList" = betterproto.message_field(
+        5, group="value"
+    )
+    """List is a list of values"""
+
+    is_truncated: bool = betterproto.bool_field(6)
+    """IsTruncated indicates whether the value was truncated"""
+
+    exit_code: int = betterproto.int32_field(7)
+    """ExitCode is the exit code of a RunCommand Probe"""
+
+    detail: str = betterproto.string_field(8)
+    """Detail is a human-readable detail of the Status"""
+
+
+@dataclass(eq=False, repr=False)
+class DeviceStatusProbeAttemptResultList(betterproto.Message):
+    """List is a list of values"""
+
+    items: List[str] = betterproto.string_field(1)
+    """Items is the list of values"""
 
 
 @dataclass(eq=False, repr=False)
@@ -9230,6 +9595,12 @@ class AccessLogEntryInfoPostgres(betterproto.Message):
     )
     """Parse shows the details of the parse message"""
 
+    is_truncated: bool = betterproto.bool_field(5)
+    """
+    IsTruncated shows whether the recorded statement text was truncated
+     since it exceeded the maximum recorded length
+    """
+
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoPostgresStart(betterproto.Message):
@@ -9318,6 +9689,12 @@ class AccessLogEntryInfoMySql(betterproto.Message):
     """
     PrepareStatement shows the details of a command that prepares a
      statement
+    """
+
+    is_truncated: bool = betterproto.bool_field(7)
+    """
+    IsTruncated shows whether the recorded statement text was truncated
+     since it exceeded the maximum recorded length
     """
 
 
@@ -9738,6 +10115,13 @@ class AccessLogEntryInfoLlm(betterproto.Message):
     )
     """SemanticRouter is the outcome of the SemanticRouter Plugin"""
 
+    translation: "AccessLogEntryInfoLlmTranslation" = betterproto.message_field(28)
+    """
+    Translation is the record of a request whose upstream protocol
+     differed from the one that the downstream used. It is unset for the
+     requests that were not translated at all.
+    """
+
 
 @dataclass(eq=False, repr=False)
 class AccessLogEntryInfoLlmModel(betterproto.Message):
@@ -9866,6 +10250,30 @@ class AccessLogEntryInfoLlmTools(betterproto.Message):
      exists because the absence of a name from a bounded list is not
      evidence that the tool was not called, and a security dashboard
      that treated it as such would report a false negative.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class AccessLogEntryInfoLlmTranslation(betterproto.Message):
+    """
+    Translation is the record of a request whose upstream protocol
+     differed from the one that the downstream used. It is only set for
+     the requests that Octelium actually translated, so its absence
+     means that the upstream spoke the entry's own `protocol` field.
+     The downstream protocol and route are deliberately not repeated
+     here, since the entry already carries them.
+    """
+
+    upstream_protocol: "ServiceSpecConfigLlmProtocol" = betterproto.enum_field(1)
+    """
+    UpstreamProtocol is the inference API protocol that the request
+     was translated into and that the upstream served
+    """
+
+    upstream_route: "RequestContextRequestLlmRoute" = betterproto.enum_field(2)
+    """
+    UpstreamRoute is the canonical inference API route of the
+     upstream protocol that the request was translated into
     """
 
 
@@ -10979,6 +11387,9 @@ class ClusterConfigSpecDevice(betterproto.Message):
     workload: "ClusterConfigSpecDeviceWorkload" = betterproto.message_field(2)
     """Workload sets Device options for WORKLOAD Users"""
 
+    probing: "ClusterConfigSpecDeviceProbing" = betterproto.message_field(3)
+    """Probing sets the device probing options"""
+
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecDeviceHuman(betterproto.Message):
@@ -11000,6 +11411,17 @@ class ClusterConfigSpecDeviceWorkload(betterproto.Message):
 
     max_per_user: int = betterproto.uint32_field(2)
     """MaxPerUser sets the max number of Devices per User"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigSpecDeviceProbing(betterproto.Message):
+    """
+    Probing sets the Cluster-wide options of running Probes on the
+     Devices
+    """
+
+    is_disabled: bool = betterproto.bool_field(1)
+    """IsDisabled disables running Probes on the Devices"""
 
 
 @dataclass(eq=False, repr=False)
@@ -11025,6 +11447,11 @@ class ClusterConfigSpecDns(betterproto.Message):
      by the Cluster itself
     """
 
+    zones: List["ClusterConfigSpecDnsZone"] = betterproto.message_field(2)
+    """
+    Zones is the list of DNS zones used to resolve matching domain suffixes
+    """
+
 
 @dataclass(eq=False, repr=False)
 class ClusterConfigSpecDnsZone(betterproto.Message):
@@ -11038,6 +11465,9 @@ class ClusterConfigSpecDnsZone(betterproto.Message):
     CacheDuration is the duration for which the zone's answers are
      cached
     """
+
+    domains: List[str] = betterproto.string_field(3)
+    """Domains is the list of domain suffixes served by the zone"""
 
 
 @dataclass(eq=False, repr=False)
@@ -11583,7 +12013,10 @@ class ClusterConfigStatusDevice(betterproto.Message):
     """Device is the Cluster-wide Device configuration"""
 
     probes: List["ClusterConfigStatusDeviceProbe"] = betterproto.message_field(1)
-    """Probes is the list of the Probes that are run on the Devices"""
+    """
+    Probes is the list of the available Probes. The Cluster issues a
+     bounded subset of them in each ProbeAttempt.
+    """
 
 
 @dataclass(eq=False, repr=False)
@@ -11593,38 +12026,53 @@ class ClusterConfigStatusDeviceProbe(betterproto.Message):
      information used to bind them to their DeviceManagers
     """
 
-    owner_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(1)
+    id: str = betterproto.string_field(1)
+    """
+    ID is the stable identifier of the Probe. It is unique within the
+     Probes list.
+    """
+
+    owner_ref: "__meta_v1__.ObjectReference" = betterproto.message_field(2)
     """OwnerRef is the reference of the DeviceManager that owns the Probe"""
 
-    os_type: "DeviceStatusOsType" = betterproto.enum_field(2)
+    os_types: List["DeviceStatusOsType"] = betterproto.enum_field(3)
     """
-    OSType restricts the Probe to the Devices running a specific
-     operating system
+    OSTypes restricts the Probe to the Devices running one of the given
+     operating systems. An empty list matches every operating system.
     """
 
-    require_elevation: bool = betterproto.bool_field(3)
+    require_elevation: bool = betterproto.bool_field(4)
     """
     RequireElevation requires the Probe to be run with elevated
      privileges
     """
 
-    condition: "Condition" = betterproto.message_field(4)
-    """Condition decides whether the Probe is run on a given Device"""
+    condition: "Condition" = betterproto.message_field(5)
+    """
+    Condition decides whether the Probe is run on a given Device. Its
+     input contains `ctx.device` and `ctx.user`. A Probe without a
+     Condition is run on every Device.
+    """
 
     run_command: "ClusterConfigStatusDeviceProbeRunCommand" = betterproto.message_field(
-        5, group="type"
+        6, group="type"
     )
     """RunCommand runs a command on the Device"""
 
     read_file: "ClusterConfigStatusDeviceProbeReadFile" = betterproto.message_field(
-        6, group="type"
+        7, group="type"
     )
     """ReadFile reads a file from the Device"""
 
     read_registry: "ClusterConfigStatusDeviceProbeReadRegistry" = (
-        betterproto.message_field(7, group="type")
+        betterproto.message_field(8, group="type")
     )
     """ReadRegistry reads a value from the Device's Windows registry"""
+
+    platform_identifier: "ClusterConfigStatusDeviceProbePlatformIdentifier" = (
+        betterproto.message_field(9, group="type")
+    )
+    """PlatformIdentifier reads a platform identifier of the Device"""
 
 
 @dataclass(eq=False, repr=False)
@@ -11632,7 +12080,7 @@ class ClusterConfigStatusDeviceProbeRunCommand(betterproto.Message):
     """RunCommand runs a command on the Device and collects its output"""
 
     command: str = betterproto.string_field(1)
-    """Command is the command to be run"""
+    """Command is the absolute path of the command to be run"""
 
     args: List[str] = betterproto.string_field(2)
     """Args is the list of the command's arguments"""
@@ -11655,7 +12103,7 @@ class ClusterConfigStatusDeviceProbeReadFile(betterproto.Message):
     """ReadFile reads a file from the Device"""
 
     path: str = betterproto.string_field(1)
-    """Path is the path of the file to be read"""
+    """Path is the absolute path of the file to be read"""
 
     max_bytes: int = betterproto.uint32_field(2)
     """MaxBytes is the maximum size in bytes that is read from the file"""
@@ -11670,6 +12118,19 @@ class ClusterConfigStatusDeviceProbeReadRegistry(betterproto.Message):
 
     name: str = betterproto.string_field(2)
     """Name is the name of the registry value to be read"""
+
+
+@dataclass(eq=False, repr=False)
+class ClusterConfigStatusDeviceProbePlatformIdentifier(betterproto.Message):
+    """
+    PlatformIdentifier reads an identifier of the Device natively from
+     its platform without running any command
+    """
+
+    kind: "ClusterConfigStatusDeviceProbePlatformIdentifierKind" = (
+        betterproto.enum_field(1)
+    )
+    """Kind is the kind of the identifier"""
 
 
 @dataclass(eq=False, repr=False)
@@ -11834,6 +12295,9 @@ class RequestContextRequest(betterproto.Message):
 
     llm: "RequestContextRequestLlm" = betterproto.message_field(10, group="Type")
     """LLM is the LLM gateway specific details."""
+
+    mysql: "RequestContextRequestMySql" = betterproto.message_field(11, group="Type")
+    """MySQL is the MySQL specific details."""
 
     ip: str = betterproto.string_field(7)
     """IP is the IP address of the downstream that issued the request"""
@@ -12014,6 +12478,55 @@ class RequestContextRequestPostgresParse(betterproto.Message):
 
     query: str = betterproto.string_field(2)
     """Query is the SQL query itself"""
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestMySql(betterproto.Message):
+    """MySQL is the MySQL-specific request details"""
+
+    query: "RequestContextRequestMySqlQuery" = betterproto.message_field(
+        1, group="type"
+    )
+    """Query is the details of a query command"""
+
+    prepare_statement: "RequestContextRequestMySqlPrepareStatement" = (
+        betterproto.message_field(2, group="type")
+    )
+    """
+    PrepareStatement is the details of a command that prepares a
+     statement
+    """
+
+    init_db: "RequestContextRequestMySqlInitDb" = betterproto.message_field(
+        3, group="type"
+    )
+    """InitDB is the details of a command that changes the default database"""
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestMySqlQuery(betterproto.Message):
+    """Query is the details of a query command"""
+
+    query: str = betterproto.string_field(1)
+    """Query is the SQL query itself"""
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestMySqlPrepareStatement(betterproto.Message):
+    """
+    PrepareStatement is the details of a command that prepares a statement
+    """
+
+    query: str = betterproto.string_field(1)
+    """Query is the SQL query itself"""
+
+
+@dataclass(eq=False, repr=False)
+class RequestContextRequestMySqlInitDb(betterproto.Message):
+    """InitDB is the details of a command that changes the default database"""
+
+    database: str = betterproto.string_field(1)
+    """Database is the database name requested by the downstream"""
 
 
 @dataclass(eq=False, repr=False)

@@ -35,13 +35,31 @@ class ClientLoginRequestApiVersion(betterproto.Enum):
     """
 
 
-class RegisterDeviceBeginRequestInfoOsType(betterproto.Enum):
+class ClientLoginRequestCallbackType(betterproto.Enum):
+    LOOPBACK = 0
+    """
+    LOOPBACK is the loopback HTTP callback of the desktop clients (i.e. the
+     Octelium CLI and the Octelium daemon). Its URL is derived from
+     callbackPort and callbackSuffix.
+    """
+
+    APP = 1
+    """
+    APP is the fixed private-use URI scheme callback of the Octelium mobile
+     applications (i.e. `com.octelium.client:/callback/success`). Both
+     callbackPort and callbackSuffix must be unset and codeChallenge is
+     required. Clusters that do not support it reject the request.
+    """
+
+
+class RegisterDeviceRequestInfoOsType(betterproto.Enum):
     OS_TYPE_UNKNOWN = 0
     LINUX = 1
     WINDOWS = 2
     MAC = 3
     ANDROID = 4
     IOS = 5
+    CHROMEOS = 6
 
 
 class TokenT0ContentType(betterproto.Enum):
@@ -56,6 +74,24 @@ class AuthenticatorStatusType(betterproto.Enum):
     FIDO = 1
     TOTP = 2
     TPM = 3
+
+
+class DeviceProbePlatformIdentifierKind(betterproto.Enum):
+    KIND_UNKNOWN = 0
+    HARDWARE_SERIAL = 1
+    HARDWARE_UUID = 2
+    OS_INSTALLATION_ID = 3
+    MAC_ADDRESS = 4
+
+
+class DeviceProbeResultStatus(betterproto.Enum):
+    STATUS_UNKNOWN = 0
+    OK = 1
+    NOT_FOUND = 2
+    UNSUPPORTED = 3
+    PERMISSION_REQUIRED = 4
+    TIMEOUT = 5
+    FAILED = 6
 
 
 @dataclass(eq=False, repr=False)
@@ -78,6 +114,13 @@ class ClientLoginRequest(betterproto.Message):
      encoding used by RFC 7636.
     """
 
+    callback_type: "ClientLoginRequestCallbackType" = betterproto.enum_field(5)
+    """
+    CallbackType is the type of the callback to which the Cluster redirects
+     the ClientLoginResponse. The Cluster derives the callback URL out of it and
+     it never accepts an arbitrary callback URL from the client.
+    """
+
 
 @dataclass(eq=False, repr=False)
 class ClientLoginResponse(betterproto.Message):
@@ -96,13 +139,13 @@ class LogoutResponse(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
-class RegisterDeviceBeginRequest(betterproto.Message):
-    info: "RegisterDeviceBeginRequestInfo" = betterproto.message_field(1)
+class RegisterDeviceRequest(betterproto.Message):
+    info: "RegisterDeviceRequestInfo" = betterproto.message_field(1)
 
 
 @dataclass(eq=False, repr=False)
-class RegisterDeviceBeginRequestInfo(betterproto.Message):
-    os_type: "RegisterDeviceBeginRequestInfoOsType" = betterproto.enum_field(1)
+class RegisterDeviceRequestInfo(betterproto.Message):
+    os_type: "RegisterDeviceRequestInfoOsType" = betterproto.enum_field(1)
     hostname: str = betterproto.string_field(2)
     id: str = betterproto.string_field(3)
     serial_number: str = betterproto.string_field(4)
@@ -110,60 +153,23 @@ class RegisterDeviceBeginRequestInfo(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class RegisterDeviceResponse(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class RegisterDeviceBeginRequest(betterproto.Message):
+    info: "RegisterDeviceRequestInfo" = betterproto.message_field(1)
+
+
+@dataclass(eq=False, repr=False)
 class RegisterDeviceBeginResponse(betterproto.Message):
     uid: str = betterproto.string_field(1)
-    requests: List["RegisterDeviceBeginResponseRequest"] = betterproto.message_field(2)
-
-
-@dataclass(eq=False, repr=False)
-class RegisterDeviceBeginResponseRequest(betterproto.Message):
-    uid: str = betterproto.string_field(1)
-    command: "RegisterDeviceBeginResponseRequestCommand" = betterproto.message_field(
-        2, group="type"
-    )
-    file: "RegisterDeviceBeginResponseRequestFile" = betterproto.message_field(
-        3, group="type"
-    )
-
-
-@dataclass(eq=False, repr=False)
-class RegisterDeviceBeginResponseRequestCommand(betterproto.Message):
-    command: str = betterproto.string_field(1)
-    args: List[str] = betterproto.string_field(2)
-
-
-@dataclass(eq=False, repr=False)
-class RegisterDeviceBeginResponseRequestFile(betterproto.Message):
-    path: str = betterproto.string_field(1)
 
 
 @dataclass(eq=False, repr=False)
 class RegisterDeviceFinishRequest(betterproto.Message):
     uid: str = betterproto.string_field(1)
-    responses: List["RegisterDeviceFinishRequestResponse"] = betterproto.message_field(
-        2
-    )
-
-
-@dataclass(eq=False, repr=False)
-class RegisterDeviceFinishRequestResponse(betterproto.Message):
-    uid: str = betterproto.string_field(1)
-    command: "RegisterDeviceFinishRequestResponseCommand" = betterproto.message_field(
-        2, group="type"
-    )
-    file: "RegisterDeviceFinishRequestResponseFile" = betterproto.message_field(
-        3, group="type"
-    )
-
-
-@dataclass(eq=False, repr=False)
-class RegisterDeviceFinishRequestResponseCommand(betterproto.Message):
-    output: bytes = betterproto.bytes_field(1)
-
-
-@dataclass(eq=False, repr=False)
-class RegisterDeviceFinishRequestResponseFile(betterproto.Message):
-    output: bytes = betterproto.bytes_field(1)
 
 
 @dataclass(eq=False, repr=False)
@@ -480,12 +486,20 @@ class RunDeviceProbeBeginResponse(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class DeviceProbe(betterproto.Message):
+    """
+    DeviceProbe is one bounded collection operation. Its oneof selects the
+     operation; the client returns exactly one result even when collection fails.
+    """
+
     probe_id: str = betterproto.string_field(1)
     require_elevation: bool = betterproto.bool_field(2)
     run_command: "DeviceProbeRunCommand" = betterproto.message_field(3, group="type")
     read_file: "DeviceProbeReadFile" = betterproto.message_field(4, group="type")
     read_registry: "DeviceProbeReadRegistry" = betterproto.message_field(
         5, group="type"
+    )
+    platform_identifier: "DeviceProbePlatformIdentifier" = betterproto.message_field(
+        6, group="type"
     )
 
 
@@ -510,14 +524,37 @@ class DeviceProbeReadRegistry(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class DeviceProbePlatformIdentifier(betterproto.Message):
+    kind: "DeviceProbePlatformIdentifierKind" = betterproto.enum_field(1)
+
+
+@dataclass(eq=False, repr=False)
 class DeviceProbeResult(betterproto.Message):
     probe_id: str = betterproto.string_field(1)
-    output: bytes = betterproto.bytes_field(2, group="type")
-    error: str = betterproto.string_field(3, group="type")
+    status: "DeviceProbeResultStatus" = betterproto.enum_field(2)
+    text: str = betterproto.string_field(3, group="value")
+    data: bytes = betterproto.bytes_field(4, group="value")
+    list: "DeviceProbeResultList" = betterproto.message_field(5, group="value")
+    is_truncated: bool = betterproto.bool_field(6)
+    exit_code: int = betterproto.int32_field(7)
+    detail: str = betterproto.string_field(8)
+
+
+@dataclass(eq=False, repr=False)
+class DeviceProbeResultList(betterproto.Message):
+    items: List[str] = betterproto.string_field(1)
 
 
 @dataclass(eq=False, repr=False)
 class RunDeviceProbeFinishRequest(betterproto.Message):
+    """
+    RunDeviceProbeFinishRequest submits a result for every issued probe. Unknown
+     or duplicate probe IDs and incomplete submissions are rejected. The Cluster
+     enforces attempt expiry using its own clock and validates result sizes.
+     A provider adapter determines whether the evidence is sufficient for linking;
+     a collection failure is reported as a result rather than omitted.
+    """
+
     attempt_uid: str = betterproto.string_field(1)
     results: List["DeviceProbeResult"] = betterproto.message_field(2)
 
@@ -608,6 +645,23 @@ class MainServiceStub(betterproto.ServiceStub):
             "/octelium.api.main.auth.v1.MainService/Logout",
             logout_request,
             LogoutResponse,
+            timeout=timeout,
+            deadline=deadline,
+            metadata=metadata,
+        )
+
+    async def register_device(
+        self,
+        register_device_request: "RegisterDeviceRequest",
+        *,
+        timeout: Optional[float] = None,
+        deadline: Optional["Deadline"] = None,
+        metadata: Optional["MetadataLike"] = None
+    ) -> "RegisterDeviceResponse":
+        return await self._unary_unary(
+            "/octelium.api.main.auth.v1.MainService/RegisterDevice",
+            register_device_request,
+            RegisterDeviceResponse,
             timeout=timeout,
             deadline=deadline,
             metadata=metadata,
@@ -897,6 +951,11 @@ class MainServiceBase(ServiceBase):
     async def logout(self, logout_request: "LogoutRequest") -> "LogoutResponse":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
+    async def register_device(
+        self, register_device_request: "RegisterDeviceRequest"
+    ) -> "RegisterDeviceResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
     async def register_device_begin(
         self, register_device_begin_request: "RegisterDeviceBeginRequest"
     ) -> "RegisterDeviceBeginResponse":
@@ -1012,6 +1071,14 @@ class MainServiceBase(ServiceBase):
     ) -> None:
         request = await stream.recv_message()
         response = await self.logout(request)
+        await stream.send_message(response)
+
+    async def __rpc_register_device(
+        self,
+        stream: "grpclib.server.Stream[RegisterDeviceRequest, RegisterDeviceResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.register_device(request)
         await stream.send_message(response)
 
     async def __rpc_register_device_begin(
@@ -1162,6 +1229,12 @@ class MainServiceBase(ServiceBase):
                 grpclib.const.Cardinality.UNARY_UNARY,
                 LogoutRequest,
                 LogoutResponse,
+            ),
+            "/octelium.api.main.auth.v1.MainService/RegisterDevice": grpclib.const.Handler(
+                self.__rpc_register_device,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                RegisterDeviceRequest,
+                RegisterDeviceResponse,
             ),
             "/octelium.api.main.auth.v1.MainService/RegisterDeviceBegin": grpclib.const.Handler(
                 self.__rpc_register_device_begin,

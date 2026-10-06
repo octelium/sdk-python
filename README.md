@@ -12,11 +12,7 @@ This is the official Python SDK for Octelium. The SDK provides authenticated acc
 pip install octelium-sdk
 ```
 
-Or install the generated protobuf APIs separately:
-
-```bash
-pip install octelium-apis
-```
+The generated protobuf APIs are installed automatically as the `octelium-apis` dependency. See the [Cluster SDK guide](packages/sdk/README.md) for authentication, shutdown, HTTP restrictions, and migration details, and the [Core API examples](packages/sdk/examples/README.md) for managing Users, Services, Policies, Credentials, Groups, Namespaces, and ClusterConfig.
 
 # Basic Example
 
@@ -79,7 +75,7 @@ client = await OcteliumClient.create(
             oauth2_client_credentials=OAuth2ClientCredentialsConfig(
                 client_id="client-id",
                 client_secret="client-secret",
-                scopes=["core"],
+                scopes=["api:core"],
             ),
         ),
     )

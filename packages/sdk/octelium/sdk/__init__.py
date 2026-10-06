@@ -1,7 +1,7 @@
 from .client import (
     AuthConfig,
-    AuthTokenConfig,
     AuthenticatedHTTPClient,
+    AuthTokenConfig,
     OAuth2ClientCredentialsConfig,
     OcteliumClient,
     OcteliumClientConfig,

@@ -1,12 +1,12 @@
 [tool.pytest.ini_options]
-testpaths = ["packages/cordium/tests"]
+testpaths = ["packages/cordium/tests", "packages/sdk/tests"]
 asyncio_mode = "auto"
 filterwarnings = ["error::ResourceWarning"]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-include = ["packages/cordium/**/*.py", "scripts/*.py"]
+include = ["packages/cordium/**/*.py", "packages/sdk/**/*.py", "scripts/*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
@@ -15,8 +15,8 @@ ignore = ["E501", "ASYNC109", "ASYNC230"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-mypy_path = ["packages/apis", "packages/cordium/src"]
-files = ["packages/cordium/src/cordium", "packages/cordium/examples"]
+mypy_path = ["packages/apis", "packages/cordium/src", "packages/sdk"]
+files = ["packages/cordium/src/cordium", "packages/cordium/examples", "packages/sdk/octelium/sdk", "packages/sdk/examples"]
 follow_imports = "silent"
 
 [[tool.mypy.overrides]]

@@ -24,10 +24,11 @@ from grpclib.const import Cardinality, Status
 from grpclib.events import SendRequest, listen
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from grpclib.metadata import Deadline
-from multidict import CIMultiDict
+from multidict import CIMultiDict, MultiDict
 from yarl import URL
 
 from octelium.api.main.auth.v1 import (
+    AuthenticateWithAssertionRequest,
     AuthenticateWithAuthenticationTokenRequest,
     AuthenticateWithRefreshTokenRequest,
     LogoutRequest,
@@ -38,6 +39,7 @@ from octelium.api.main.auth.v1 import (
 )
 from octelium.api.main.cordium.v1 import MainServiceStub as CordiumStub
 from octelium.api.main.core.v1 import MainServiceStub as CoreStub
+from octelium.api.main.meta.v1 import ObjectReference
 from octelium.api.main.user.v1 import MainServiceStub as UserStub
 
 __all__ = [
@@ -45,6 +47,8 @@ __all__ = [
     "OcteliumClientConfig",
     "AuthConfig",
     "AuthTokenConfig",
+    "AssertionConfig",
+    "AuthenticationError",
     "OAuth2ClientCredentialsConfig",
     "AuthenticatedHTTPClient",
     "run_sync",
@@ -69,6 +73,12 @@ def _positive_number(value: float, name: str) -> None:
         or value <= 0
     ):
         raise ValueError(f"{name} must be finite and positive")
+
+
+def _is_async_provider(value: object) -> bool:
+    return inspect.iscoroutinefunction(value) or (
+        callable(value) and inspect.iscoroutinefunction(type(value).__call__)
+    )
 
 
 def _normalize_host(value: str) -> str:
@@ -117,15 +127,30 @@ class AuthTokenConfig:
             if not self.token.strip():
                 raise ValueError("authentication token must not be empty")
             object.__setattr__(self, "token", self.token.strip())
-        elif not (
-            inspect.iscoroutinefunction(self.token)
-            or (callable(self.token) and inspect.iscoroutinefunction(type(self.token).__call__))
-        ):
+        elif not _is_async_provider(self.token):
             raise ValueError("authentication token providers must be async functions")
         if not isinstance(self.reusable, bool):
             raise ValueError("reusable must be a boolean")
         if self.reusable and isinstance(self.token, str):
             raise ValueError("reusable authentication requires an async token provider")
+        object.__setattr__(self, "scopes", _scopes(self.scopes))
+
+
+@dataclass(frozen=True)
+class AssertionConfig:
+    token: str | Callable[[], Awaitable[str]] = field(repr=False)
+    scopes: Sequence[str] = field(default_factory=tuple)
+    identity_provider: str = ""
+
+    def __post_init__(self) -> None:
+        if isinstance(self.token, str):
+            if not self.token.strip():
+                raise ValueError("assertion must not be empty")
+            object.__setattr__(self, "token", self.token.strip())
+        elif not _is_async_provider(self.token):
+            raise ValueError("assertion providers must be async functions")
+        if not isinstance(self.identity_provider, str):
+            raise ValueError("identity_provider must be a string")
         object.__setattr__(self, "scopes", _scopes(self.scopes))
 
 
@@ -145,14 +170,25 @@ class OAuth2ClientCredentialsConfig:
 
 @dataclass(frozen=True)
 class AuthConfig:
-    type: Literal["auth_token", "oauth2_client_credentials", "access_token"]
+    type: Literal["auth_token", "oauth2_client_credentials", "access_token", "assertion"]
     auth_token: AuthTokenConfig | None = None
     oauth2_client_credentials: OAuth2ClientCredentialsConfig | None = None
-    access_token: str | None = field(default=None, repr=False)
+    access_token: str | Callable[[], Awaitable[str]] | None = field(default=None, repr=False)
+    assertion: AssertionConfig | None = None
 
     def __post_init__(self) -> None:
-        values = (self.auth_token, self.oauth2_client_credentials, self.access_token)
-        expected = {"auth_token": 0, "oauth2_client_credentials": 1, "access_token": 2}
+        values = (
+            self.auth_token,
+            self.oauth2_client_credentials,
+            self.access_token,
+            self.assertion,
+        )
+        expected = {
+            "auth_token": 0,
+            "oauth2_client_credentials": 1,
+            "access_token": 2,
+            "assertion": 3,
+        }
         if (
             not isinstance(self.type, str)
             or self.type not in expected
@@ -168,9 +204,13 @@ class AuthConfig:
             self.oauth2_client_credentials, OAuth2ClientCredentialsConfig
         ):
             raise ValueError("oauth2_client_credentials must be an OAuth2ClientCredentialsConfig")
+        if self.type == "assertion" and not isinstance(self.assertion, AssertionConfig):
+            raise ValueError("assertion must be an AssertionConfig")
         if self.type == "access_token":
+            if _is_async_provider(self.access_token):
+                return
             if not isinstance(self.access_token, str) or not self.access_token.strip():
-                raise ValueError("access_token must be a nonempty string")
+                raise ValueError("access_token must be a nonempty string or an async provider")
             object.__setattr__(self, "access_token", self.access_token.strip())
 
 
@@ -250,7 +290,11 @@ class OcteliumClientConfig:
         )
 
 
-class _OAuth2HTTPError(RuntimeError):
+class AuthenticationError(RuntimeError):
+    pass
+
+
+class _OAuth2HTTPError(AuthenticationError):
     def __init__(self, status: int) -> None:
         super().__init__(f"OAuth2 token fetch failed with HTTP status {status}")
         self.status = status
@@ -265,6 +309,17 @@ class _OAuth2Cache:
 
 _Request = TypeVar("_Request")
 _Response = TypeVar("_Response")
+
+
+class _ClientStream(Stream[_Request, _Response]):
+    def __init__(self, owner: OcteliumClient, *args: Any, **kwargs: Any) -> None:
+        self._owner = owner
+        super().__init__(*args, **kwargs)
+
+    def _raise_for_grpc_status(self, status: Status, message: str | None, details: Any) -> None:
+        if status is Status.UNAUTHENTICATED and (token := self._metadata.get("x-octelium-auth")):
+            self._owner._invalidate_access_token(str(token))
+        super()._raise_for_grpc_status(status, message, details)
 
 
 class _ClientChannel(Channel):
@@ -284,14 +339,21 @@ class _ClientChannel(Channel):
         metadata: Any = None,
     ) -> Stream[_Request, _Response]:
         self._owner._ensure_open()
-        return super().request(
+        if timeout is not None:
+            limit = Deadline.from_timeout(timeout)
+            deadline = limit if deadline is None else min(limit, deadline)
+        return _ClientStream(
+            self._owner,
+            self,
             name,
+            MultiDict(metadata or ()),
             cardinality,
             request_type,
             reply_type,
-            timeout=timeout,
+            codec=self._codec,
+            status_details_codec=self._status_details_codec,
+            dispatch=self.__dispatch__,
             deadline=deadline,
-            metadata=metadata,
         )
 
 
@@ -310,6 +372,7 @@ class OcteliumClient:
         self._loop = asyncio.get_running_loop()
         self._session_token: SessionToken | None = None
         self._session_token_set_at: float | None = None
+        self._rejected_access_token: str | None = None
         self._oauth2_cache: _OAuth2Cache | None = None
         self._authentication_attempted = False
         self._auth_task: asyncio.Task[str] | None = None
@@ -415,14 +478,22 @@ class OcteliumClient:
 
     def _needs_new_access_token(self) -> bool:
         token = self._session_token
-        if token is None or token.expires_in <= 0:
+        if (
+            token is None
+            or token.expires_in <= 0
+            or token.access_token == self._rejected_access_token
+        ):
             return True
         margin = min(self._config.refresh_before_expiry_seconds, token.expires_in / 5)
         return time.monotonic() >= self._session_expires_at() - margin
 
     def _usable_token(self) -> str | None:
         now = time.monotonic()
-        if self._session_token is not None and now < self._session_expires_at():
+        if (
+            self._session_token is not None
+            and self._session_token.access_token != self._rejected_access_token
+            and now < self._session_expires_at()
+        ):
             return self._session_token.access_token
         if self._oauth2_cache is not None and now < self._oauth2_cache.expires_at:
             return self._oauth2_cache.access_token
@@ -435,13 +506,18 @@ class OcteliumClient:
             self._ensure_open()
         auth = self._config.auth
         if auth is None:
-            raise RuntimeError(
+            raise AuthenticationError(
                 "no auth config provided; set config.auth, OCTELIUM_AUTH_TOKEN, or OCTELIUM_ACCESS_TOKEN"
             )
         if auth.type == "access_token":
             assert auth.access_token is not None
-            return auth.access_token
-        if auth.type == "auth_token" and not self._needs_new_access_token():
+            if isinstance(auth.access_token, str):
+                return auth.access_token
+            async with asyncio.timeout(self._config.authentication_timeout_seconds):
+                value = await self._resolve_token(auth.access_token, "access token")
+            self._ensure_open()
+            return value
+        if auth.type in ("auth_token", "assertion") and not self._needs_new_access_token():
             assert self._session_token is not None
             return self._session_token.access_token
         if (
@@ -469,7 +545,7 @@ class OcteliumClient:
             async with asyncio.timeout(self._config.authentication_timeout_seconds):
                 auth = self._config.auth
                 assert auth is not None
-                if auth.type == "auth_token":
+                if auth.type in ("auth_token", "assertion"):
                     await self._set_access_token_response()
                     assert self._session_token is not None
                     token = self._session_token.access_token
@@ -511,18 +587,34 @@ class OcteliumClient:
         finally:
             self._auth_task = None
 
-    async def _resolve_authentication_token(self, cfg: AuthTokenConfig) -> str:
-        value = cfg.token if isinstance(cfg.token, str) else await cfg.token()
+    @staticmethod
+    async def _resolve_token(source: str | Callable[[], Awaitable[str]], name: str) -> str:
+        value = source if isinstance(source, str) else await source()
         if not isinstance(value, str) or not value.strip():
-            raise RuntimeError("authentication token provider returned an empty token")
+            raise AuthenticationError(f"{name} provider returned an empty token")
         return value.strip()
 
-    async def _authenticate_new_session(self, cfg: AuthTokenConfig) -> SessionToken:
+    async def _authenticate_new_session(self, auth: AuthConfig) -> SessionToken:
+        if auth.assertion is not None:
+            request = AuthenticateWithAssertionRequest(
+                assertion=await self._resolve_token(auth.assertion.token, "assertion"),
+                scopes=list(auth.assertion.scopes),
+            )
+            if auth.assertion.identity_provider:
+                request.identity_provider_ref = ObjectReference(
+                    name=auth.assertion.identity_provider
+                )
+            self._ensure_open()
+            return await self._auth_stub.authenticate_with_assertion(
+                request, timeout=self._config.authentication_timeout_seconds
+            )
+        cfg = auth.auth_token
+        assert cfg is not None
         if self._authentication_attempted and not cfg.reusable:
-            raise RuntimeError(
+            raise AuthenticationError(
                 "Session expired or authentication outcome was ambiguous; authentication token cannot be reused"
             )
-        token = await self._resolve_authentication_token(cfg)
+        token = await self._resolve_token(cfg.token, "authentication token")
         self._ensure_open()
         self._authentication_attempted = True
         return await self._auth_stub.authenticate_with_authentication_token(
@@ -534,7 +626,7 @@ class OcteliumClient:
 
     async def _set_access_token_response(self) -> None:
         auth = self._config.auth
-        assert auth is not None and auth.auth_token is not None
+        assert auth is not None
         snapshot = self._session_token
         started = time.monotonic()
         if (
@@ -545,7 +637,7 @@ class OcteliumClient:
             self._clear_session()
             snapshot = None
         if snapshot is None:
-            resp = await self._authenticate_new_session(auth.auth_token)
+            resp = await self._authenticate_new_session(auth)
         else:
             try:
                 resp = await self._auth_stub.authenticate_with_refresh_token(
@@ -556,22 +648,22 @@ class OcteliumClient:
                 if exc.status == Status.ALREADY_EXISTS:
                     if self._session_token is snapshot and self._usable_token() is not None:
                         raise
-                    raise RuntimeError(
+                    raise AuthenticationError(
                         "refresh was rate limited without a usable access token"
                     ) from exc
                 if exc.status != Status.UNAUTHENTICATED:
                     raise
                 self._clear_session()
-                if not auth.auth_token.reusable:
-                    raise RuntimeError(
+                if auth.auth_token is not None and not auth.auth_token.reusable:
+                    raise AuthenticationError(
                         "Session expired and the authentication token cannot be reused"
                     ) from exc
                 started = time.monotonic()
-                resp = await self._authenticate_new_session(auth.auth_token)
+                resp = await self._authenticate_new_session(auth)
         self._validate_session_token(resp)
         self._ensure_open()
         if time.monotonic() >= started + resp.expires_in:
-            raise RuntimeError("authentication response expired during the exchange")
+            raise AuthenticationError("authentication response expired during the exchange")
         self._session_token = resp
         self._session_token_set_at = started
 
@@ -582,14 +674,16 @@ class OcteliumClient:
             or not token.access_token.strip()
             or not token.refresh_token.strip()
         ):
-            raise RuntimeError("authentication response must include access and refresh tokens")
+            raise AuthenticationError(
+                "authentication response must include access and refresh tokens"
+            )
         if (
             type(token.expires_in) is not int
             or token.expires_in <= 0
             or type(token.refresh_token_expires_in) is not int
             or token.refresh_token_expires_in < token.expires_in
         ):
-            raise RuntimeError("authentication response has invalid token lifetimes")
+            raise AuthenticationError("authentication response has invalid token lifetimes")
 
     async def _get_oauth_session(self) -> aiohttp.ClientSession:
         self._ensure_open()
@@ -624,33 +718,35 @@ class OcteliumClient:
             while chunk := await resp.content.read(min(8192, 65537 - len(body))):
                 body.extend(chunk)
                 if len(body) > 65536:
-                    raise RuntimeError("OAuth2 token response exceeded 65536 bytes")
+                    raise AuthenticationError("OAuth2 token response exceeded 65536 bytes")
             if resp.content_type not in ("application/json", "application/problem+json"):
-                raise RuntimeError("OAuth2 token endpoint returned an invalid content type")
+                raise AuthenticationError("OAuth2 token endpoint returned an invalid content type")
             try:
                 payload = json.loads(body)
             except (ValueError, UnicodeError) as exc:
-                raise RuntimeError("OAuth2 token endpoint returned invalid JSON") from exc
+                raise AuthenticationError("OAuth2 token endpoint returned invalid JSON") from exc
         if not isinstance(payload, dict):
-            raise RuntimeError("OAuth2 token endpoint must return a JSON object")
+            raise AuthenticationError("OAuth2 token endpoint must return a JSON object")
         access_token = payload.get("access_token")
         if not isinstance(access_token, str) or not access_token.strip():
-            raise RuntimeError("OAuth2 token response missing access_token")
+            raise AuthenticationError("OAuth2 token response missing access_token")
         token_type = payload.get("token_type")
         if not isinstance(token_type, str) or token_type.lower() != "bearer":
-            raise RuntimeError("OAuth2 token response must use the Bearer token type")
+            raise AuthenticationError("OAuth2 token response must use the Bearer token type")
         expires_in = payload.get("expires_in")
         if type(expires_in) is not int or expires_in <= 0:
-            raise RuntimeError("OAuth2 token response has invalid expires_in")
+            raise AuthenticationError("OAuth2 token response has invalid expires_in")
         maximum = self._config.max_oauth2_expires_in_seconds
         if maximum is not None and expires_in > maximum:
-            raise RuntimeError("OAuth2 token response exceeds the configured lifetime maximum")
+            raise AuthenticationError(
+                "OAuth2 token response exceeds the configured lifetime maximum"
+            )
         try:
             expires_at = started + expires_in
         except OverflowError as exc:
-            raise RuntimeError("OAuth2 token response has invalid expires_in") from exc
+            raise AuthenticationError("OAuth2 token response has invalid expires_in") from exc
         if not math.isfinite(expires_at) or time.monotonic() >= expires_at:
-            raise RuntimeError("OAuth2 token response expired during the exchange")
+            raise AuthenticationError("OAuth2 token response expired during the exchange")
         margin = min(self._config.refresh_before_expiry_seconds, expires_in / 5)
         self._ensure_open()
         self._oauth2_cache = _OAuth2Cache(access_token.strip(), expires_at, expires_at - margin)
@@ -658,6 +754,12 @@ class OcteliumClient:
 
     async def get_access_token(self) -> str:
         return await self._do_get_access_token()
+
+    def _invalidate_access_token(self, token: str) -> None:
+        if self._session_token is not None and self._session_token.access_token == token:
+            self._rejected_access_token = token
+        if self._oauth2_cache is not None and self._oauth2_cache.access_token == token:
+            self._oauth2_cache = None
 
     def http_client(
         self, *, timeout: aiohttp.ClientTimeout | None = None
@@ -671,7 +773,7 @@ class OcteliumClient:
 
     async def logout(self) -> None:
         self._ensure_open()
-        if self._config.auth is None or self._config.auth.type != "auth_token":
+        if self._config.auth is None or self._config.auth.type not in ("auth_token", "assertion"):
             raise RuntimeError("client does not own a managed Cluster Session")
         if self._logout_task is None:
             self._logout_task = asyncio.create_task(self._logout())
@@ -754,6 +856,15 @@ class OcteliumClient:
         else:
             with suppress(Exception):
                 await self.close()
+
+    @property
+    def domain(self) -> str:
+        return self._config.domain
+
+    @property
+    def channel(self) -> Channel:
+        self._ensure_open()
+        return self._channel
 
     @property
     def core_v1(self) -> CoreStub:

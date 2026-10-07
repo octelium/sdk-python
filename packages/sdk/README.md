@@ -49,9 +49,15 @@ auth = AuthConfig(
 )
 ```
 
+Workload identity federation uses `AuthConfig(type="assertion", assertion=AssertionConfig(token=..., scopes=[...], identity_provider="..."))`. The token is an assertion string or an async provider, such as one that rereads a projected Kubernetes token. Assertions are not limited-use: when a refresh reports an expired session, the SDK authenticates again with a new assertion from the provider. `identity_provider` optionally names the IdentityProvider that verifies it.
+
+`AuthConfig(type="access_token", access_token=...)` accepts a static access token or an async provider for externally managed tokens. A provider is consulted for each call, within `authentication_timeout_seconds`, and must return a nonempty token.
+
 OAuth uses `OAuth2ClientCredentialsConfig(client_id=..., client_secret=..., scopes=["api:core"])` inside `AuthConfig(type="oauth2_client_credentials", oauth2_client_credentials=...)`. Scope examples also include `api:core.MainService/ListUser` and `service:<name>`. OAuth token requests reject redirects, validate their response, and never include raw response bodies in errors. An optional `max_oauth2_expires_in_seconds` imposes an application lifetime limit; the default permits supported long-lived tokens.
 
-Refresh remains demand driven. There is no background maintenance timer for idle sessions.
+Refresh remains demand driven. There is no background maintenance timer for idle sessions. A call rejected with `UNAUTHENTICATED` is not replayed, but the managed session or OAuth token it carried is discarded, so the next call obtains a new one.
+
+`client.channel` is the authenticated grpclib channel underlying `core_v1`, `user_v1` and `cordium_v1`. Pass it to the generated stubs of any other service, such as `WorkspaceServiceStub(client.channel)` from `octelium.api.main.cordium.v1`. `client.domain` is the resolved Cluster domain.
 
 ## HTTP destinations and deadlines
 
@@ -72,7 +78,7 @@ For private PKI, supply `ssl_context_factory=lambda: ssl.create_default_context(
 
 Construct and use the async client on one running event loop. `run_sync()` is a one-shot runner for a complete coroutine program, including resource creation and shutdown; it is not a blocking facade for reusing a client across loops. Use `asyncio.run(main())` for an ordinary entry point.
 
-`close()` releases local resources and clears token caches. It does not revoke the remote session. Use `await client.logout()` explicitly when remote session termination is intended, then close the client. Logout uses refresh-token metadata and treats an already absent session as success. Clients using external access tokens or OAuth client credentials do not own a managed session for logout.
+`close()` releases local resources and clears token caches. It does not revoke the remote session. Use `await client.logout()` explicitly when remote session termination is intended, then close the client. Logout uses refresh-token metadata and treats an already absent session as success. Clients using authentication tokens or assertions own a managed session. Clients using external access tokens or OAuth client credentials do not own a managed session for logout.
 
 Concurrent closes share cleanup. Caller cancellation is propagated after owned cleanup, and an exception raised inside an async context is preserved. Closing the parent cancels owned exchanges and HTTP requests and closes child sessions. A retained service stub still rejects calls through the closed client.
 

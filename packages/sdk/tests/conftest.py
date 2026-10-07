@@ -30,6 +30,8 @@ class ClusterAuth(a.MainServiceBase):
     def __init__(self):
         self.generation = 0
         self.authentication_tokens = []
+        self.assertions = []
+        self.revoked = set()
         self.refresh_calls = 0
         self.logout_calls = 0
         self.refresh_error = None
@@ -49,6 +51,13 @@ class ClusterAuth(a.MainServiceBase):
         self.generation += 1
         self.initial_started.set()
         await self.initial_release.wait()
+        return self.response or session(self.generation)
+
+    async def authenticate_with_assertion(self, request):
+        self.assertions.append(
+            (request.assertion, list(request.scopes), request.identity_provider_ref.name)
+        )
+        self.generation += 1
         return self.response or session(self.generation)
 
     async def authenticate_with_refresh_token(self, request):
@@ -80,7 +89,7 @@ class ClusterService(p.MainServiceBase):
         expected = (
             "environment-access" if self.auth.generation == 0 else f"access-{self.auth.generation}"
         )
-        if token != expected:
+        if token != expected or token in self.auth.revoked:
             raise GRPCError(Status.UNAUTHENTICATED, "missing access metadata")
         return p.Workspace(metadata=m.Metadata(name=request.name))
 

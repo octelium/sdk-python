@@ -1,6 +1,8 @@
 from .client import (
+    AssertionConfig,
     AuthConfig,
     AuthenticatedHTTPClient,
+    AuthenticationError,
     AuthTokenConfig,
     OAuth2ClientCredentialsConfig,
     OcteliumClient,
@@ -13,6 +15,8 @@ __all__ = [
     "OcteliumClientConfig",
     "AuthConfig",
     "AuthTokenConfig",
+    "AssertionConfig",
+    "AuthenticationError",
     "OAuth2ClientCredentialsConfig",
     "AuthenticatedHTTPClient",
     "run_sync",

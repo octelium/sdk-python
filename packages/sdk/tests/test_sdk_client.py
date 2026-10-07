@@ -9,8 +9,10 @@ import pytest
 from grpclib.const import Status
 from grpclib.exceptions import GRPCError
 from octelium.api.main.auth.v1 import SessionToken
+from octelium.api.main.cordium import v1 as p
 from octelium.api.main.meta.v1 import GetOptions
 from octelium.sdk import (
+    AssertionConfig,
     AuthConfig,
     AuthTokenConfig,
     OAuth2ClientCredentialsConfig,
@@ -369,11 +371,14 @@ def test_invalid_config_rejected(kwargs):
         {"type": "unknown"},
         {"type": "auth_token"},
         {"type": "access_token", "access_token": ""},
+        {"type": "access_token", "access_token": lambda: "secret"},
         {
             "type": "access_token",
             "access_token": "secret",
             "auth_token": AuthTokenConfig(token="credential"),
         },
+        {"type": "assertion"},
+        {"type": "assertion", "auth_token": AuthTokenConfig(token="credential")},
     ],
 )
 def test_invalid_auth_combinations_rejected(kwargs):
@@ -562,3 +567,73 @@ async def test_tls_factory_rejects_shared_context(sdk_tls):
     config = OcteliumClientConfig(domain="example.test", ssl_context_factory=lambda: sdk_tls.client)
     with pytest.raises(ValueError, match="new SSLContext"):
         OcteliumClient(config)
+
+
+async def test_assertion_sessions_reauthenticate_with_fresh_assertions(
+    sdk_client_factory, sdk_cluster
+):
+    values = iter(["first", "second"])
+
+    async def provider():
+        return next(values)
+
+    client = sdk_client_factory(
+        auth=AuthConfig(
+            type="assertion",
+            assertion=AssertionConfig(token=provider, scopes=["scope"], identity_provider="k8s"),
+        )
+    )
+    assert await client.get_access_token() == "access-1"
+    client._session_token_set_at = time.monotonic() - 1800
+    sdk_cluster.auth.refresh_error = GRPCError(Status.UNAUTHENTICATED, "revoked")
+    assert await client.get_access_token() == "access-2"
+    assert sdk_cluster.auth.assertions == [
+        ("first", ["scope"], "k8s"),
+        ("second", ["scope"], "k8s"),
+    ]
+    await client.logout()
+    assert sdk_cluster.auth.logout_calls == 1
+    with pytest.raises(ValueError, match="async"):
+        AssertionConfig(token=lambda: "assertion")
+    with pytest.raises(ValueError):
+        AssertionConfig(token=" ")
+
+
+async def test_access_token_provider_is_consulted_for_each_call(sdk_client_factory, sdk_cluster):
+    values = iter(["environment-access", " "])
+
+    async def provider():
+        return next(values)
+
+    client = sdk_client_factory(auth=AuthConfig(type="access_token", access_token=provider))
+    result = await client.cordium_v1.get_workspace(GetOptions(name="workspace"))
+    assert result.metadata.name == "workspace"
+    assert sdk_cluster.metadata[-1][1]["x-octelium-auth"] == "environment-access"
+    with pytest.raises(RuntimeError, match="empty"):
+        await client.get_access_token()
+
+
+async def test_rejected_session_token_is_replaced_for_the_next_call(
+    sdk_client_factory, sdk_cluster
+):
+    client = sdk_client_factory()
+    assert client.domain == "example.test"
+    stub = p.MainServiceStub(client.channel)
+    await stub.get_workspace(GetOptions(name="workspace"))
+    sdk_cluster.auth.revoked.add("access-1")
+    with pytest.raises(GRPCError) as error:
+        await stub.get_workspace(GetOptions(name="workspace"))
+    assert error.value.status is Status.UNAUTHENTICATED
+    result = await stub.get_workspace(GetOptions(name="workspace"))
+    assert result.metadata.name == "workspace"
+    client._invalidate_access_token("access-1")
+    assert await client.get_access_token() == "access-2"
+    assert sdk_cluster.auth.refresh_calls == 1
+    assert [
+        values["x-octelium-auth"]
+        for method, values in sdk_cluster.metadata
+        if method.endswith("/GetWorkspace")
+    ] == ["access-1", "access-1", "access-2"]
+    await client.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = client.channel

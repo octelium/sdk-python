@@ -1,23 +1,30 @@
 import asyncio
-import ssl
-import subprocess
+import time
 
 import httpx
 import pytest
-from conftest import Main
 from cordium import (
     AccessToken,
     AssertionFile,
     AsyncCordium,
+    AuthConfig,
     AuthenticationToken,
     CordiumError,
+    OAuth2ClientCredentials,
+    OcteliumClient,
 )
+from cordium.auth import octelium_auth
 from grpclib.client import Channel
-from grpclib.server import Server
+from grpclib.config import Configuration
+from octelium.sdk import OcteliumClientConfig
 
 
 def make_client(cluster, auth):
-    return AsyncCordium("example.test", auth=auth, host="127.0.0.1", port=cluster.port, tls=False)
+    return AsyncCordium("example.test", auth=auth, **cluster.connection)
+
+
+def expire(client):
+    client.octelium._session_token_set_at = time.monotonic() - 3590
 
 
 async def test_auth_single_flight_cancel_refresh(cluster):
@@ -33,11 +40,11 @@ async def test_auth_single_flight_cancel_refresh(cluster):
         assert len(cluster.auth.requests) == 1
         assert cluster.auth.requests[0].authentication_token == "one-use"
         assert all(
-            headers["authorization"] == "Bearer session-token"
+            headers["x-octelium-auth"] == "session-token" and "authorization" not in headers
             for path, headers in cluster.metadata
             if path.endswith("GetWorkspace")
         )
-        client._engine.auth.expires_at = 0
+        expire(client)
         assert await client.access_token() == "refreshed"
         refresh_headers = [
             headers
@@ -46,7 +53,7 @@ async def test_auth_single_flight_cancel_refresh(cluster):
         ][0]
         assert refresh_headers == {"x-octelium-refresh-token": "refresh-secret"}
         cluster.auth.fail_refresh = True
-        client._engine.auth.expires_at = 0
+        expire(client)
         with pytest.raises(CordiumError) as invalid:
             await client.access_token()
         assert invalid.value.code == "UNAUTHENTICATED"
@@ -58,15 +65,16 @@ async def test_assertion_file_is_reread(cluster, tmp_path):
     path.write_text("first\n")
     async with make_client(cluster, AssertionFile(path, scopes=("scope",))) as client:
         assert await client.access_token() == "assertion-token"
+        assert cluster.auth.requests[-1].assertion == "first"
         path.write_text("second")
-        client._engine.auth.expires_at = 0
         cluster.auth.fail_refresh = True
+        expire(client)
         await client.access_token()
         assert cluster.auth.requests[-1].assertion == "second"
         assert cluster.auth.requests[-1].scopes == ["scope"]
 
 
-async def test_provider_is_dynamic_and_client_ownership(cluster):
+async def test_provider_is_dynamic_and_client_ownership(cluster, tls):
     values = iter(["first", "second"])
 
     async def provider():
@@ -75,9 +83,20 @@ async def test_provider_is_dynamic_and_client_ownership(cluster):
     async with make_client(cluster, AccessToken(provider)) as client:
         assert await client.access_token() == "first"
         assert await client.access_token() == "second"
-    channel = Channel("127.0.0.1", cluster.port, ssl=False)
+    context = tls.options["ssl_context_factory"]()
+    context.set_alpn_protocols(["h2"])
+    channel = Channel(
+        "127.0.0.1",
+        cluster.port,
+        ssl=context,
+        config=Configuration(ssl_target_name_override="localhost"),
+    )
     client = AsyncCordium(channel=channel)
     await client.workspaces.get("abc")
+    assert client.octelium is None
+    with pytest.raises(CordiumError) as owned:
+        await client.access_token()
+    assert owned.value.code == "FAILED_PRECONDITION"
     await client.aclose()
     from octelium.api.main.cordium.v1 import MainServiceStub
     from octelium.api.main.meta.v1 import GetOptions
@@ -86,6 +105,35 @@ async def test_provider_is_dynamic_and_client_ownership(cluster):
         await MainServiceStub(channel).get_workspace(GetOptions(name="abc"))
     ).metadata.name == "abc"
     channel.close()
+
+
+async def test_supplied_octelium_client_is_shared_and_left_open(cluster, tls):
+    octelium = OcteliumClient(
+        OcteliumClientConfig(
+            domain="example.test",
+            auth=AuthConfig(type="access_token", access_token="shared"),
+            api_host="127.0.0.1",
+            api_port=cluster.port,
+            **tls.options,
+        )
+    )
+    for kwargs in (
+        {"auth": AccessToken("other")},
+        {"host": "127.0.0.1"},
+        {"channel": Channel("127.0.0.1", cluster.port)},
+    ):
+        with pytest.raises(ValueError):
+            AsyncCordium(octelium=octelium, **kwargs)
+    with pytest.raises(ValueError):
+        AsyncCordium("other.test", octelium=octelium)
+    client = AsyncCordium(octelium=octelium)
+    assert client.domain == "example.test"
+    assert client.octelium is octelium
+    await client.workspaces.get("abc")
+    assert cluster.metadata[-1][1]["x-octelium-auth"] == "shared"
+    await client.aclose()
+    assert await octelium.get_access_token() == "shared"
+    await octelium.close()
 
 
 async def test_http_auth_scope_redirect_size_and_ownership():
@@ -106,9 +154,14 @@ async def test_http_auth_scope_redirect_size_and_ownership():
         http_client=http,
         authorized_http_hosts=("extra.test",),
     ) as client:
-        response = await client.request("GET", "https://api_abc.cordium.example.test/ok")
+        response = await client.request(
+            "GET",
+            "https://api_abc.cordium.example.test/ok",
+            headers={"Authorization": "Bearer app-token", "x-octelium-auth": "wrong"},
+        )
         assert response.content == b"body" and response.is_closed
-        assert requests[-1].headers["Authorization"] == "Bearer secret"
+        assert requests[-1].headers["x-octelium-auth"] == "secret"
+        assert requests[-1].headers["Authorization"] == "Bearer app-token"
         assert requests[-1].headers["Host"] == "api_abc.cordium.example.test"
         assert (await client.request("GET", "https://extra.test/redirect")).status_code == 302
         for url in [
@@ -151,50 +204,24 @@ async def test_http_full_body_deadline():
         assert deadline.value.code == "DEADLINE_EXCEEDED" and body.closed
 
 
-async def test_verified_tls_and_default_endpoint(tmp_path):
-    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
-    await asyncio.to_thread(
-        subprocess.run,
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-nodes",
-            "-keyout",
-            str(key),
-            "-out",
-            str(cert),
-            "-days",
-            "1",
-            "-subj",
-            "/CN=localhost",
-            "-addext",
-            "subjectAltName=DNS:localhost",
-        ],
-        check=True,
-        capture_output=True,
-    )
-    server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    server_context.load_cert_chain(cert, key)
-    server = Server([Main()])
-    await server.start("127.0.0.1", 0, ssl=server_context)
-    port = server._server.sockets[0].getsockname()[1]
-    context = ssl.create_default_context(cafile=str(cert))
-    try:
-        async with AsyncCordium(
-            "example.test", auth=AccessToken("token"), host="localhost", port=port, tls=context
-        ) as client:
-            assert (await client.workspaces.get("abc")).name == "abc"
-        async with AsyncCordium("example.test", auth=AccessToken("token")) as client:
-            assert client._engine.host == "octelium-api.example.test"
-    finally:
-        server.close()
-        await server.wait_closed()
+async def test_tls_verification_options_and_default_endpoint(cluster):
+    connection = dict(cluster.connection)
+    async with AsyncCordium("example.test", auth=AccessToken("token"), **connection) as client:
+        assert (await client.workspaces.get("abc")).name == "abc"
+    del connection["ssl_context_factory"]
+    async with AsyncCordium("example.test", auth=AccessToken("token"), **connection) as client:
+        with pytest.raises(CordiumError) as unverified:
+            await client.workspaces.get("abc", timeout=5)
+        assert unverified.value.code == "UNAVAILABLE"
+    async with AsyncCordium(
+        "example.test", auth=AccessToken("token"), insecure_tls=True, **connection
+    ) as client:
+        assert (await client.workspaces.get("abc")).name == "abc"
+    async with AsyncCordium("example.test", auth=AccessToken("token")) as client:
+        assert client.octelium._channel._host == "octelium-api.example.test"
 
 
-def test_environment_and_redaction(monkeypatch):
+async def test_environment_and_redaction(monkeypatch):
     for name in (
         "CORDIUM_DOMAIN",
         "OCTELIUM_DOMAIN",
@@ -210,7 +237,12 @@ def test_environment_and_redaction(monkeypatch):
     monkeypatch.setenv("OCTELIUM_DOMAIN", "example.test")
     monkeypatch.setenv("OCTELIUM_ACCESS_TOKEN", "redacted-value")
     monkeypatch.setenv("OCTELIUM_AUTH_TOKEN", "other-value")
-    client = AsyncCordium()
-    assert isinstance(client._engine.credentials, AccessToken)
-    assert "redacted-value" not in repr(client._engine.credentials)
+    async with AsyncCordium() as client:
+        assert await client.access_token() == "redacted-value"
+    assert "redacted-value" not in repr(octelium_auth(AccessToken("redacted-value")))
     assert "redacted-value" not in repr(AuthenticationToken("redacted-value"))
+    assert "redacted-value" not in repr(OAuth2ClientCredentials("client", "redacted-value"))
+    oauth = octelium_auth(OAuth2ClientCredentials("client", "secret", scopes=("api",)))
+    assert oauth.oauth2_client_credentials.scopes == ("api",)
+    explicit = AuthConfig(type="access_token", access_token="explicit")
+    assert octelium_auth(explicit) is explicit

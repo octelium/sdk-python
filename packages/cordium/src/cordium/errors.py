@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import betterproto
+
 if TYPE_CHECKING:
-    from octelium.api.main.cordium.v1 import Workspace
+    from octelium.api.main.cordium.v1 import Workspace, WorkspaceStatusFailure
 
     from .models import ExecResult
 
@@ -15,32 +17,57 @@ class CordiumError(Exception):
 
     ``code`` is a gRPC status name (e.g. NOT_FOUND) or an SDK code such as
     CLIENT_CLOSED or PROTOCOL_ERROR. The original exception is chained as __cause__.
+    ``workspace`` is the last fetched state of a workspace that run() created
+    before failing, so that it can be inspected and deleted.
     """
 
-    def __init__(self, message: str, code: str = "UNKNOWN", *, details: object = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        code: str = "UNKNOWN",
+        *,
+        details: object = None,
+        workspace: Workspace | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.details = details
+        self.workspace = workspace
 
 
 class ExecError(CordiumError):
     """A checked command exited unsuccessfully; ``result`` contains its captured output."""
 
     def __init__(self, result: ExecResult) -> None:
-        super().__init__(f"Command exited with code {result.exit_code}", "COMMAND_FAILED")
+        stderr = result.stderr.strip()
+        if len(stderr) > 512:
+            stderr = stderr[:512] + "..."
+        super().__init__(
+            f"Command exited with code {result.exit_code}" + (f": {stderr}" if stderr else ""),
+            "COMMAND_FAILED",
+        )
         self.result = result
 
 
 class WorkspaceFailureError(CordiumError):
     """A run failed; ``workspace`` is retained for diagnosis and explicit deletion."""
 
+    workspace: Workspace
+
     def __init__(self, workspace: Workspace) -> None:
+        failure = run_failure(workspace)
         super().__init__(
-            workspace.status.failure.message
-            or f"Workspace {workspace.metadata.name} failed to become ready",
+            (failure.message if failure is not None else "")
+            or f"Workspace {workspace.metadata.name} failed",
             "WORKSPACE_FAILED",
+            workspace=workspace,
         )
-        self.workspace = workspace
+
+
+def run_failure(workspace: Workspace) -> WorkspaceStatusFailure | None:
+    status = workspace.status
+    failure = status.run.failure if betterproto.serialized_on_wire(status.run) else status.failure
+    return failure if betterproto.serialized_on_wire(failure) else None
 
 
 def nonempty(value: str, name: str) -> str:

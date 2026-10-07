@@ -80,9 +80,9 @@ class WorkspaceOptions(TypedDict, total=False):
     display_name: str
     """Optional human-readable workspace label."""
     template: Reference
-    """Template to inherit; mutually exclusive with snapshot."""
+    """Template to inherit; with a snapshot it defaults to the snapshot's Template."""
     snapshot: Reference
-    """Snapshot to restore; cannot be ephemeral."""
+    """Snapshot to restore; an ephemeral workspace restores it on every run."""
     image: str | p.WorkspaceSpecImage
     """Registry image string or a generated image source (Dockerfile/git/devcontainer)."""
     repository: str | p.WorkspaceSpecRepository
@@ -120,13 +120,21 @@ def limits(value: Resources) -> p.WorkspaceSpecLimit:
     return result
 
 
+def _value(key: str, value: str) -> str:
+    if value == "":
+        raise ValueError(f"Environment variable {key} has an empty value")
+    return value
+
+
 def environment(values: Mapping[str, str | SecretRef]) -> list[p.WorkspaceSpecRuntimeEnvVar]:
     return [
         p.WorkspaceSpecRuntimeEnvVar(
             key=nonempty(key, "Environment key"), from_secret=nonempty(value.name, "Secret")
         )
         if isinstance(value, SecretRef)
-        else p.WorkspaceSpecRuntimeEnvVar(key=nonempty(key, "Environment key"), value=value)
+        else p.WorkspaceSpecRuntimeEnvVar(
+            key=nonempty(key, "Environment key"), value=_value(key, value)
+        )
         for key, value in values.items()
     ]
 
@@ -141,8 +149,6 @@ def variables(values: Mapping[str, str]) -> list[p.WorkspaceSpecVar]:
 def create_workspace_spec(**options: Unpack[WorkspaceOptions]) -> p.WorkspaceSpec:
     """Build a validated, independent protobuf spec without making a network request."""
     spec = copy.deepcopy(options.get("spec", p.WorkspaceSpec()))
-    if "template" in options and "snapshot" in options:
-        raise ValueError("template and snapshot are mutually exclusive")
     if "image" in options:
         image = options["image"]
         spec.image = (
@@ -167,8 +173,6 @@ def create_workspace_spec(**options: Unpack[WorkspaceOptions]) -> p.WorkspaceSpe
         spec.limit = limits(options["resources"])
     if "ephemeral" in options:
         spec.is_ephemeral = options["ephemeral"]
-    if "snapshot" in options and spec.is_ephemeral:
-        raise ValueError("Snapshot restores cannot be ephemeral")
     if "applications" in options:
         names: set[str] = set()
         apps = []
@@ -209,7 +213,9 @@ def create_workspace_spec(**options: Unpack[WorkspaceOptions]) -> p.WorkspaceSpe
                     type=cast(p.WorkspaceSpecRuntimeTaskType, stages[task.on]),
                     working_dir=task.cwd,
                     env_vars=[
-                        p.WorkspaceSpecRuntimeTaskEnvVar(key=k, value=v)
+                        p.WorkspaceSpecRuntimeTaskEnvVar(
+                            key=nonempty(k, "Task environment key"), value=_value(k, v)
+                        )
                         for k, v in (task.env or {}).items()
                     ],
                     is_background=task.background,

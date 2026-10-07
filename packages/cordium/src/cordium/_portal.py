@@ -80,6 +80,7 @@ class Portal:
 
         async def run_cleanup() -> None:
             await cleanup()
+            await asyncio.sleep(0.25)
 
         with self._lock:
             if self._closed:

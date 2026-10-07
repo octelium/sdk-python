@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import posixpath
 import tempfile
 from collections.abc import AsyncIterator, Callable
 from functools import partial
@@ -40,6 +41,7 @@ class AsyncFiles:
     Transfers use fixed-length base64 input because exec cannot signal stdin EOF.
     Local downloads are atomic; remote writes may leave a partial file on failure.
     Paths are literal and never expanded by the shell (including ~ and $HOME).
+    Every helper defaults to a five-minute timeout.
     """
 
     def __init__(self, engine: Engine, ref: Reference) -> None:
@@ -71,9 +73,9 @@ class AsyncFiles:
         self,
         path: str,
         *,
-        max_bytes: int = 16 * 1024 * 1024,
+        max_bytes: int = 64 * 1024 * 1024,
         root: bool = False,
-        timeout: float | None = 30,
+        timeout: float | None = 300,
     ) -> bytes:
         """Read a binary file, raising RESOURCE_EXHAUSTED instead of silently truncating."""
         integer(max_bytes, "max_bytes", 0, 2**31 - 2)
@@ -95,9 +97,9 @@ class AsyncFiles:
         *,
         encoding: str = "utf-8",
         errors: str = "strict",
-        max_bytes: int = 16 * 1024 * 1024,
+        max_bytes: int = 64 * 1024 * 1024,
         root: bool = False,
-        timeout: float | None = 30,
+        timeout: float | None = 300,
     ) -> str:
         """Read and decode a bounded file; invalid text raises UnicodeDecodeError by default."""
         return (
@@ -110,7 +112,10 @@ class AsyncFiles:
         integer(size, "size", 0, 2**63 - 1)
         encoded_size = 4 * ((size + 2) // 3)
         # Chunks are multiples of three bytes so concatenated encodings have no internal padding.
-        command = f"head -c {encoded_size} | base64 -d > {_path(path)}"
+        parent = posixpath.dirname(path) or "."
+        command = (
+            f"mkdir -p -- {_path(parent)} && head -c {encoded_size} | base64 -d > {_path(path)}"
+        )
         async with self._engine.operation(timeout):
             session = await self._session(command, root=root, timeout=None, interactive=True)
             async with session:
@@ -132,9 +137,9 @@ class AsyncFiles:
                 await session.wait()
 
     async def write_bytes(
-        self, path: str, data: bytes, *, root: bool = False, timeout: float | None = 30
+        self, path: str, data: bytes, *, root: bool = False, timeout: float | None = 300
     ) -> None:
-        """Create or truncate a remote file with exact bytes; parent directories must exist."""
+        """Create or truncate a remote file with exact bytes, creating parent directories."""
 
         async def chunks() -> AsyncIterator[bytes]:
             for offset in range(0, len(data), 24576):
@@ -150,7 +155,7 @@ class AsyncFiles:
         encoding: str = "utf-8",
         errors: str = "strict",
         root: bool = False,
-        timeout: float | None = 30,
+        timeout: float | None = 300,
     ) -> None:
         """Encode text and create or truncate a remote file."""
         await self.write_bytes(path, text.encode(encoding, errors), root=root, timeout=timeout)
@@ -184,13 +189,14 @@ class AsyncFiles:
     ) -> Path:
         """Stream into a private temporary file and atomically replace the local destination.
 
-        A failed transfer preserves an existing destination. Parent directories must
-        exist. The new file has mode 0600 on POSIX; remote permissions are not copied.
+        A failed transfer preserves an existing destination. Missing parent directories
+        are created. The new file has mode 0600 on POSIX; remote permissions are not copied.
         """
         destination = Path(local_path)
         temporary: str | None = None
         try:
             async with self._engine.operation(timeout):
+                await _disk(partial(destination.parent.mkdir, parents=True, exist_ok=True))
                 with tempfile.NamedTemporaryFile(
                     dir=destination.parent, prefix=".cordium-", delete=False
                 ) as target:
@@ -212,7 +218,7 @@ class AsyncFiles:
                 os.unlink(temporary)
 
     async def mkdir(
-        self, path: str, *, parents: bool = True, root: bool = False, timeout: float | None = 30
+        self, path: str, *, parents: bool = True, root: bool = False, timeout: float | None = 300
     ) -> None:
         """Create a directory, optionally creating its parents."""
         session = await self._session(
@@ -228,7 +234,7 @@ class AsyncFiles:
         recursive: bool = False,
         missing_ok: bool = False,
         root: bool = False,
-        timeout: float | None = 30,
+        timeout: float | None = 300,
     ) -> None:
         """Remove a literal file/path. Directory recursion must be requested explicitly."""
         session = await self._session(

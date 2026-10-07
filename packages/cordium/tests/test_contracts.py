@@ -3,7 +3,7 @@ import inspect
 
 import cordium
 import pytest
-from cordium import CordiumError, Ref
+from cordium import CordiumError, Ref, proto
 
 
 async def test_watch_deadline_overflow_and_close(client, cluster):
@@ -12,10 +12,12 @@ async def test_watch_deadline_overflow_and_close(client, cluster):
         with pytest.raises(CordiumError) as deadline:
             await anext(events)
         assert deadline.value.code == "DEADLINE_EXCEEDED"
+    cluster.main.watch_updates = [
+        proto.WatchWorkspaceResponseUpdate(new_item=cluster.main.value) for _ in range(5)
+    ]
     async with client.workspaces.watch(max_buffer_bytes=1) as events:
-        with pytest.raises(CordiumError) as overflow:
-            await anext(events)
-        assert overflow.value.code == "RESOURCE_EXHAUSTED"
+        assert [(await anext(events)).type for _ in range(6)] == ["create"] + ["update"] * 5
+    cluster.main.watch_updates = []
     events = client.workspaces.watch()
     await anext(events)
     pending = asyncio.create_task(anext(events))

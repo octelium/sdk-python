@@ -6,6 +6,8 @@ import asyncio
 import copy
 import os
 import signal
+import ssl
+import subprocess
 from contextlib import suppress
 from types import SimpleNamespace
 
@@ -31,10 +33,13 @@ class Main(p.MainServiceBase):
         self.pages = []
         self.delay = 0
         self.error = None
+        self.watch_updates = []
         self.watch_closed = asyncio.Event()
 
     async def create_workspace(self, request):
         self.requests.append(request)
+        if not betterproto.serialized_on_wire(request.spec):
+            raise GRPCError(Status.INVALID_ARGUMENT, "Resource spec must be set")
         self.value.spec = copy.deepcopy(request.spec)
         self.value.status.template_ref = request.status.template_ref
         self.value.status.workspace_snapshot_ref = request.status.workspace_snapshot_ref
@@ -50,6 +55,8 @@ class Main(p.MainServiceBase):
 
     async def start_workspace(self, request):
         self.requests.append(request)
+        if self.value.status.state == State.RUNNING:
+            raise GRPCError(Status.ALREADY_EXISTS, "Workspace is already running")
         self.value.status.state = State.RUNNING
         self.value.status.hostname = "abc.cordium.example.test"
         return p.StartWorkspaceResponse()
@@ -83,6 +90,8 @@ class Main(p.MainServiceBase):
         self.requests.append(request)
         try:
             yield p.WatchWorkspaceResponse(create=p.WatchWorkspaceResponseCreate(item=self.value))
+            for update in self.watch_updates:
+                yield p.WatchWorkspaceResponse(update=update)
             await asyncio.Event().wait()
         finally:
             self.watch_closed.set()
@@ -100,6 +109,7 @@ class Runtime(p.WorkspaceServiceBase):
     def __init__(self):
         self.requests = []
         self.active = 0
+        self.exit_after_kill = True
         self.closed = asyncio.Event()
         self.terminal_closed = asyncio.Event()
         self.removed = []
@@ -116,6 +126,7 @@ class Runtime(p.WorkspaceServiceBase):
         self.closed.clear()
         process = None
         tasks = []
+        killed = False
         try:
             first = await stream.recv_message()
             request = first.request
@@ -146,6 +157,8 @@ class Runtime(p.WorkspaceServiceBase):
                         process.stdin.write(message.write_data.data)
                         await process.stdin.drain()
                     elif kind == "kill":
+                        nonlocal killed
+                        killed = True
                         with suppress(ProcessLookupError):
                             os.killpg(process.pid, signal.SIGKILL)
 
@@ -165,6 +178,9 @@ class Runtime(p.WorkspaceServiceBase):
             ]
             code = await process.wait()
             await asyncio.gather(*tasks[1:])
+            if killed and not self.exit_after_kill:
+                # Match the real agent, which reports no exit for a killed command.
+                await asyncio.Event().wait()
             await stream.send_message(
                 p.ExecResponse(exit=p.ExecResponseExit(code=code if code >= 0 else -1))
             )
@@ -211,7 +227,11 @@ class Runtime(p.WorkspaceServiceBase):
             self.terminal_closed.set()
 
     async def listen_log(self, request):
-        yield p.ListenLogResponse(data=b"building\xff")
+        yield p.ListenLogResponse(
+            type=p.ListenLogResponseType.TYPE_BUILDING_IMAGE,
+            mode=p.ListenLogResponseMode.MODE_STDERR,
+            data=b"building\xff",
+        )
 
 
 class Auth(a.MainServiceBase):
@@ -225,7 +245,10 @@ class Auth(a.MainServiceBase):
         if self.delay:
             await asyncio.sleep(self.delay)
         return a.SessionToken(
-            access_token="session-token", refresh_token="refresh-secret", expires_in=3600
+            access_token="session-token",
+            refresh_token="refresh-secret",
+            expires_in=3600,
+            refresh_token_expires_in=7200,
         )
 
     async def authenticate_with_assertion(self, request):
@@ -233,7 +256,10 @@ class Auth(a.MainServiceBase):
         if self.delay:
             await asyncio.sleep(self.delay)
         return a.SessionToken(
-            access_token="assertion-token", refresh_token="refresh-secret", expires_in=3600
+            access_token="assertion-token",
+            refresh_token="refresh-secret",
+            expires_in=3600,
+            refresh_token_expires_in=7200,
         )
 
     async def authenticate_with_refresh_token(self, request):
@@ -241,12 +267,62 @@ class Auth(a.MainServiceBase):
         if self.fail_refresh:
             raise GRPCError(Status.UNAUTHENTICATED, "expired")
         return a.SessionToken(
-            access_token="refreshed", refresh_token="refresh-secret-2", expires_in=3600
+            access_token="refreshed",
+            refresh_token="refresh-secret-2",
+            expires_in=3600,
+            refresh_token_expires_in=7200,
         )
 
 
+@pytest.fixture(scope="session")
+def tls(tmp_path_factory):
+    directory = tmp_path_factory.mktemp("tls")
+    cert, key = directory / "cert.pem", directory / "key.pem"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+            "-addext",
+            "subjectAltName=DNS:localhost",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    server = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server.load_cert_chain(cert, key)
+    server.set_alpn_protocols(["h2"])
+    return SimpleNamespace(
+        server=server,
+        cert=cert,
+        options=dict(
+            ssl_context_factory=lambda: ssl.create_default_context(cafile=str(cert)),
+            tls_server_name="localhost",
+        ),
+    )
+
+
+async def serve(tls, *services):
+    server = Server(list(services))
+    await server.start("127.0.0.1", 0, ssl=tls.server)
+    return server, dict(
+        host="127.0.0.1", port=server._server.sockets[0].getsockname()[1], **tls.options
+    )
+
+
 @pytest.fixture
-async def cluster():
+async def cluster(tls):
     main, runtime, auth = Main(), Runtime(), Auth()
     metadata = []
     server = Server([main, runtime, auth])
@@ -255,9 +331,16 @@ async def cluster():
         metadata.append((event.method_name, dict(event.metadata)))
 
     listen(server, RecvRequest, record)
-    await server.start("127.0.0.1", 0)
+    await server.start("127.0.0.1", 0, ssl=tls.server)
     port = server._server.sockets[0].getsockname()[1]
-    yield SimpleNamespace(main=main, runtime=runtime, auth=auth, metadata=metadata, port=port)
+    yield SimpleNamespace(
+        main=main,
+        runtime=runtime,
+        auth=auth,
+        metadata=metadata,
+        port=port,
+        connection=dict(host="127.0.0.1", port=port, **tls.options),
+    )
     server.close()
     await server.wait_closed()
 
@@ -265,6 +348,6 @@ async def cluster():
 @pytest.fixture
 async def client(cluster):
     async with AsyncCordium(
-        "example.test", auth=AccessToken("token"), host="127.0.0.1", port=cluster.port, tls=False
+        "example.test", auth=AccessToken("token"), **cluster.connection
     ) as value:
         yield value

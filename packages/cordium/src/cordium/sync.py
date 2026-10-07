@@ -11,13 +11,14 @@ from typing import Generic, Literal, TypeVar, Unpack, cast
 
 import httpx
 from octelium.api.main.cordium import v1 as p
+from octelium.sdk import AuthConfig
 
 from ._portal import Portal
 from .auth import Credentials
 from .client import AsyncCordium
 from .exec import AsyncExecSession
 from .files import AsyncFiles
-from .models import ExecOutput, ExecResult, Page, Reference, TerminalEvent
+from .models import ExecOutput, ExecResult, LogEntry, Page, Reference, TerminalEvent, WorkspaceEvent
 from .resources import (
     AsyncGitProviders,
     AsyncManagement,
@@ -952,15 +953,15 @@ class Management(_Facade[AsyncManagement]):
 
 
 class Files(_Facade[AsyncFiles]):
-    "File operations requiring POSIX sh, cat, head, base64, mkdir and rm remotely.\n\nTransfers use fixed-length base64 input because exec cannot signal stdin EOF.\nLocal downloads are atomic; remote writes may leave a partial file on failure.\nPaths are literal and never expanded by the shell (including ~ and $HOME)."
+    "File operations requiring POSIX sh, cat, head, base64, mkdir and rm remotely.\n\nTransfers use fixed-length base64 input because exec cannot signal stdin EOF.\nLocal downloads are atomic; remote writes may leave a partial file on failure.\nPaths are literal and never expanded by the shell (including ~ and $HOME).\nEvery helper defaults to a five-minute timeout."
 
     def read_bytes(
         self,
         path: str,
         *,
-        max_bytes: int = 16 * 1024 * 1024,
+        max_bytes: int = 64 * 1024 * 1024,
         root: bool = False,
-        timeout: float | None = 30,
+        timeout: float | None = 300,
     ) -> bytes:
         "Read a binary file, raising RESOURCE_EXHAUSTED instead of silently truncating."
         return self._portal.invoke(
@@ -973,9 +974,9 @@ class Files(_Facade[AsyncFiles]):
         *,
         encoding: str = "utf-8",
         errors: str = "strict",
-        max_bytes: int = 16 * 1024 * 1024,
+        max_bytes: int = 64 * 1024 * 1024,
         root: bool = False,
-        timeout: float | None = 30,
+        timeout: float | None = 300,
     ) -> str:
         "Read and decode a bounded file; invalid text raises UnicodeDecodeError by default."
         return self._portal.invoke(
@@ -990,9 +991,9 @@ class Files(_Facade[AsyncFiles]):
         )
 
     def write_bytes(
-        self, path: str, data: bytes, *, root: bool = False, timeout: float | None = 30
+        self, path: str, data: bytes, *, root: bool = False, timeout: float | None = 300
     ) -> None:
-        "Create or truncate a remote file with exact bytes; parent directories must exist."
+        "Create or truncate a remote file with exact bytes, creating parent directories."
         self._portal.invoke(lambda: self._async.write_bytes(path, data, root=root, timeout=timeout))
 
     def write_text(
@@ -1003,7 +1004,7 @@ class Files(_Facade[AsyncFiles]):
         encoding: str = "utf-8",
         errors: str = "strict",
         root: bool = False,
-        timeout: float | None = 30,
+        timeout: float | None = 300,
     ) -> None:
         "Encode text and create or truncate a remote file."
         self._portal.invoke(
@@ -1033,13 +1034,13 @@ class Files(_Facade[AsyncFiles]):
         root: bool = False,
         timeout: float | None = 300,
     ) -> Path:
-        "Stream into a private temporary file and atomically replace the local destination.\n\nA failed transfer preserves an existing destination. Parent directories must\nexist. The new file has mode 0600 on POSIX; remote permissions are not copied."
+        "Stream into a private temporary file and atomically replace the local destination.\n\nA failed transfer preserves an existing destination. Missing parent directories\nare created. The new file has mode 0600 on POSIX; remote permissions are not copied."
         return self._portal.invoke(
             lambda: self._async.download(remote_path, local_path, root=root, timeout=timeout)
         )
 
     def mkdir(
-        self, path: str, *, parents: bool = True, root: bool = False, timeout: float | None = 30
+        self, path: str, *, parents: bool = True, root: bool = False, timeout: float | None = 300
     ) -> None:
         "Create a directory, optionally creating its parents."
         self._portal.invoke(
@@ -1053,7 +1054,7 @@ class Files(_Facade[AsyncFiles]):
         recursive: bool = False,
         missing_ok: bool = False,
         root: bool = False,
-        timeout: float | None = 30,
+        timeout: float | None = 300,
     ) -> None:
         "Remove a literal file/path. Directory recursion must be requested explicitly."
         self._portal.invoke(
@@ -1157,7 +1158,7 @@ class Workspaces(_Facade[AsyncWorkspaces]):
         region: Reference | None = None,
         **options: Unpack[WorkspaceOptions],
     ) -> Workspace:
-        "Create, start and wait for RUNNING under one total deadline.\n\nFailures leave the workspace in place for diagnosis; no implicit deletion.\nRegion selects placement for this run. poll_interval is in seconds."
+        "Create, start and wait for RUNNING under one total deadline.\n\nFailures leave the workspace in place for diagnosis; no implicit deletion.\nA CordiumError raised after creation keeps its code and carries the\nworkspace's last fetched state in ``error.workspace``. Region selects\nplacement for this run. poll_interval is in seconds."
         return Workspace(
             self._portal,
             self._portal.invoke(
@@ -1251,8 +1252,8 @@ class Workspaces(_Facade[AsyncWorkspaces]):
         *,
         timeout: float | None = None,
         max_buffer_bytes: int = 8 * 1024 * 1024,
-    ) -> Stream[p.WatchWorkspaceResponse]:
-        "Subscribe to future create/update/delete events; no initial snapshot or reconnect.\n\nUse an context manager when stopping iteration early. Raw event oneofs\npreserve both old and new resources for update events."
+    ) -> Stream[WorkspaceEvent]:
+        "Subscribe to future create/update/delete events; no initial snapshot or reconnect.\n\nUse an context manager when stopping iteration early. Update events\ncarry the previous resource when the server reports it."
         return Stream(
             self._portal,
             self._portal.invoke(
@@ -1288,6 +1289,36 @@ class Workspace(_Facade[AsyncWorkspace]):
     def created_at(self) -> datetime:
         "Creation timestamp, represented as a timezone-aware datetime."
         return self._portal.invoke(lambda: self._async.created_at)
+
+    @property
+    def is_ephemeral(self) -> bool:
+        "Whether storage is discarded when the workspace stops."
+        return self._portal.invoke(lambda: self._async.is_ephemeral)
+
+    @property
+    def space_name(self) -> str:
+        "Name of the Space the workspace belongs to."
+        return self._portal.invoke(lambda: self._async.space_name)
+
+    @property
+    def template_name(self) -> str:
+        "Name of the Template the workspace was created from, or empty."
+        return self._portal.invoke(lambda: self._async.template_name)
+
+    @property
+    def region_name(self) -> str:
+        "Name of the Region currently hosting the workspace, or empty."
+        return self._portal.invoke(lambda: self._async.region_name)
+
+    @property
+    def failure(self) -> p.WorkspaceStatusFailure | None:
+        "Deep copy of the current or latest run's failure, if any."
+        return self._portal.invoke(lambda: self._async.failure)
+
+    @property
+    def limit(self) -> p.WorkspaceSpecLimit:
+        "Deep copy of the effective compute limits resolved by the Cluster."
+        return self._portal.invoke(lambda: self._async.limit)
 
     @property
     def state(self) -> State:
@@ -1383,7 +1414,7 @@ class Workspace(_Facade[AsyncWorkspace]):
         region: Reference | None = None,
         timeout: float | None = 30,
     ) -> Workspace:
-        "Request an asynchronous start, then refresh; vars/region apply only to this run."
+        "Request an asynchronous start, then refresh; vars/region apply only to this run.\n\nStarting a workspace that is already starting or running is a no-op."
         return Workspace(
             self._portal,
             self._portal.invoke(
@@ -1430,7 +1461,7 @@ class Workspace(_Facade[AsyncWorkspace]):
     def wait_until_stopped(
         self, *, timeout: float | None = 300, poll_interval: float = 1
     ) -> Workspace:
-        "Wait for STOPPED even when the latest run failed."
+        "Wait for STOPPED; raise WorkspaceFailureError if the run that stopped had failed."
         return Workspace(
             self._portal,
             self._portal.invoke(
@@ -1446,11 +1477,11 @@ class Workspace(_Facade[AsyncWorkspace]):
         env: Mapping[str, str] | None = None,
         root: bool = False,
         stdin: str | bytes | None = None,
-        check: bool = True,
+        check: bool = False,
         timeout: float | None = None,
         max_capture_bytes: int = 1024 * 1024,
     ) -> ExecResult:
-        "Run a shell command or safely quoted argv and collect bounded output.\n\ncheck=True raises ExecError on a nonzero exit. stdin is initial input, not\nan EOF signal: Cordium's protocol cannot half-close stdin. Commands that\nread until EOF need explicit framing (e.g. head -c). Timeout cancels exec."
+        "Run a shell command or safely quoted argv and collect bounded output.\n\nA nonzero exit is returned in the result; check=True raises ExecError instead. stdin is initial input, not\nan EOF signal: Cordium's protocol cannot half-close stdin. Commands that\nread until EOF need explicit framing (e.g. head -c). Timeout cancels exec."
         return self._portal.invoke(
             lambda: self._async.exec(
                 command,
@@ -1477,8 +1508,9 @@ class Workspace(_Facade[AsyncWorkspace]):
         timeout: float | None = None,
         max_capture_bytes: int = 1024 * 1024,
         max_buffer_bytes: int = 8 * 1024 * 1024,
+        kill_grace: float = 10,
     ) -> ExecSession:
-        "Start a command; iterate binary stdout/stderr, write input, kill or await its result.\n\nUse ``with workspace.exec_stream(...)`` to close on early exit.\nExceeding the stream queue fails; capture truncation is reported in ExecResult."
+        "Start a command; iterate binary stdout/stderr, write input, kill or await its result.\n\nUse ``with workspace.exec_stream(...)`` to close on early exit.\nA full stream queue pauses reading output until it drains; capture truncation\nis reported in ExecResult. A killed command that reports no exit within\nkill_grace seconds ends with exit code -1."
         return ExecSession(
             self._portal,
             self._portal.invoke(
@@ -1493,14 +1525,15 @@ class Workspace(_Facade[AsyncWorkspace]):
                     timeout=timeout,
                     max_capture_bytes=max_capture_bytes,
                     max_buffer_bytes=max_buffer_bytes,
+                    kill_grace=kill_grace,
                 )
             ),
         )
 
     def logs(
         self, *, timeout: float | None = None, max_buffer_bytes: int = 8 * 1024 * 1024
-    ) -> Stream[p.ListenLogResponse]:
-        "Stream initialization logs with raw bytes, timestamps, stage and stdout/stderr mode."
+    ) -> Stream[LogEntry]:
+        "Stream initialization logs: repository cloning, image pulls and builds, and tasks."
         return Stream(
             self._portal,
             self._portal.invoke(
@@ -1510,7 +1543,7 @@ class Workspace(_Facade[AsyncWorkspace]):
 
     def watch(
         self, *, timeout: float | None = None, max_buffer_bytes: int = 8 * 1024 * 1024
-    ) -> Stream[p.WatchWorkspaceResponse]:
+    ) -> Stream[WorkspaceEvent]:
         "Subscribe to this workspace's events; does not implicitly update this handle."
         return Stream(
             self._portal,
@@ -1543,7 +1576,7 @@ class Workspace(_Facade[AsyncWorkspace]):
 
 
 class ExecSession(_Facade[AsyncExecSession]):
-    "Running command with ordered async output, write(), kill(), wait(), and close().\n\nUse an async context manager to cancel on early iteration exit. wait() drains\noutput if iteration has not started. Captures and streaming queues have separate limits."
+    "Running command with ordered async output, write(), kill(), wait(), and close().\n\nUse an async context manager to cancel on early iteration exit. wait() drains\noutput if iteration has not started. Captures and streaming queues have separate\nlimits; a full streaming queue pauses reading the command's output until it drains."
 
     def ready(self) -> ExecSession:
         "Wait until the initial command request has been sent."
@@ -1554,7 +1587,7 @@ class ExecSession(_Facade[AsyncExecSession]):
         self._portal.invoke(lambda: self._async.write(data))
 
     def kill(self) -> None:
-        "Terminate the remote process group; the server normally reports exit code -1."
+        "Terminate the remote process group; the server normally reports exit code -1.\n\nA command whose exit is not reported within kill_grace seconds ends the session\non its own with exit code -1 and killed set."
         self._portal.invoke(lambda: self._async.kill())
 
     def wait(self) -> ExecResult:
@@ -1586,16 +1619,18 @@ class ExecSession(_Facade[AsyncExecSession]):
 
 
 class Cordium(_Facade[AsyncCordium]):
-    "Blocking Cordium SDK with one owned event-loop thread; use with.\n\n        Safe for calls from multiple threads. Create a new client after fork.\n        domain selects the Cluster, and RPCs default to octelium-api.<domain>:443.\n        auth defaults to Octelium credential environment variables. TLS verifies\n        peers; use an SSLContext for custom CAs. Construction does not contact\n        the Cluster. close() cancels operations and joins the thread.\n"
+    "Blocking Cordium SDK with one owned event-loop thread; use with.\n\n        Safe for calls from multiple threads. Create a new client after fork.\n        domain selects the Cluster, and RPCs default to octelium-api.<domain>:443.\n        auth defaults to Octelium credential environment variables. TLS verifies\n        peers; use ssl_context_factory for custom CAs. Construction does not contact\n        the Cluster. close() cancels operations and joins the thread.\n"
 
     def __init__(
         self,
         domain: str | None = None,
         *,
-        auth: Credentials | None = None,
+        auth: Credentials | AuthConfig | None = None,
         host: str | None = None,
         port: int = 443,
-        tls: ssl.SSLContext | bool = True,
+        ssl_context_factory: Callable[[], ssl.SSLContext] | None = None,
+        insecure_tls: bool = False,
+        tls_server_name: str = "",
         authorized_http_hosts: Sequence[str] = (),
         allow_insecure_http: bool = False,
     ) -> None:
@@ -1607,7 +1642,9 @@ class Cordium(_Facade[AsyncCordium]):
                     auth=auth,
                     host=host,
                     port=port,
-                    tls=tls,
+                    ssl_context_factory=ssl_context_factory,
+                    insecure_tls=insecure_tls,
+                    tls_server_name=tls_server_name,
                     authorized_http_hosts=authorized_http_hosts,
                     allow_insecure_http=allow_insecure_http,
                 )
@@ -1709,7 +1746,7 @@ class Cordium(_Facade[AsyncCordium]):
         timeout: float | None = 30,
         max_response_bytes: int = 16 * 1024 * 1024,
     ) -> httpx.Response:
-        "Call a workspace application with current bearer authentication.\n\nOnly HTTPS Cluster-domain/subdomain destinations and explicitly authorized\nhosts are allowed. Redirects are returned without following. The response\nbody is buffered up to max_response_bytes; non-2xx statuses are returned,\nso call response.raise_for_status() if desired. timeout covers authentication\nand the full body. HTTP transport failures use code UNAVAILABLE."
+        "Call a workspace application with current Octelium authentication.\n\nOnly HTTPS Cluster-domain/subdomain destinations and explicitly authorized\nhosts are allowed. Credentials travel in the x-octelium-auth header, leaving\nthe application's own Authorization header alone. Redirects are returned\nwithout following. The response\nbody is buffered up to max_response_bytes; non-2xx statuses are returned,\nso call response.raise_for_status() if desired. timeout covers authentication\nand the full body. HTTP transport failures use code UNAVAILABLE."
         return self._portal.invoke(
             lambda: self._async.request(
                 method,
@@ -1723,7 +1760,7 @@ class Cordium(_Facade[AsyncCordium]):
         )
 
     def close(self) -> None:
-        "Cancel SDK operations and close owned transports; never stop or delete resources."
+        "Cancel SDK operations and close the owned Octelium client; never stop or delete resources."
         self._portal.close(self._async.aclose)
 
     def __enter__(self) -> Cordium:

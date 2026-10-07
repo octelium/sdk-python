@@ -14,7 +14,7 @@ from octelium.api.main.meta import v1 as m
 
 from ._engine import Engine
 from .errors import CordiumError, integer, nonempty
-from .models import Page, Reference, reference, timeout_value
+from .models import Page, Reference, present, reference, timeout_value
 from .spec import (
     Resources,
     SecretRef,
@@ -246,7 +246,9 @@ class AsyncSpaces:
             value.authorization.disable_ssh = disable_ssh
         return await self._engine.call(
             lambda: self._engine.raw.main.create_space(
-                p.Space(metadata=m.Metadata(name=name, display_name=display_name), spec=value)
+                p.Space(
+                    metadata=m.Metadata(name=name, display_name=display_name), spec=present(value)
+                )
             ),
             timeout,
         )
@@ -418,7 +420,7 @@ class AsyncTemplates:
                     metadata=m.Metadata(
                         name=nonempty(name, "Template name"), display_name=display_name
                     ),
-                    spec=value,
+                    spec=present(value),
                 )
             ),
             timeout,
@@ -560,6 +562,7 @@ class AsyncSnapshots:
             lambda: self._engine.raw.main.create_workspace_snapshot(
                 p.WorkspaceSnapshot(
                     metadata=m.Metadata(name=nonempty(name, "Snapshot name")),
+                    spec=present(p.WorkspaceSnapshotSpec()),
                     status=p.WorkspaceSnapshotStatus(workspace_ref=reference(workspace)),
                 )
             ),
@@ -803,7 +806,9 @@ class AsyncSecrets:
     ) -> p.Secret:
         """Create a write-only Space Secret. Strings, bytes and JSON objects are supported; no update RPC exists."""
         resource = p.Secret(
-            metadata=m.Metadata(name=nonempty(name, "Secret name")), data=_secret(value)
+            metadata=m.Metadata(name=nonempty(name, "Secret name")),
+            spec=present(p.SecretSpec()),
+            data=_secret(value),
         )
         return await self._engine.call(
             lambda: self._engine.raw.main.create_secret(resource), timeout
@@ -904,7 +909,11 @@ class AsyncUserSecrets:
         data = p.UserSecretData().parse(bytes(_secret(value)))
         return await self._engine.call(
             lambda: self._engine.raw.main.create_user_secret(
-                p.UserSecret(metadata=m.Metadata(name=nonempty(name, "Secret name")), data=data)
+                p.UserSecret(
+                    metadata=m.Metadata(name=nonempty(name, "Secret name")),
+                    spec=present(p.UserSecretSpec()),
+                    data=data,
+                )
             ),
             timeout,
         )
@@ -918,6 +927,7 @@ class AsyncUserSecrets:
                     spec=p.UserSecretSpec(
                         type=cast(p.UserSecretSpecType, p.UserSecretSpecType.SSH_KEY)
                     ),
+                    data=present(p.UserSecretData()),
                 )
             ),
             timeout,

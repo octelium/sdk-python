@@ -10,9 +10,7 @@ async def test_sync_matches_async_and_streams(cluster, tmp_path):
         with Cordium(
             "example.test",
             auth=AccessToken("token"),
-            host="127.0.0.1",
-            port=cluster.port,
-            tls=False,
+            **cluster.connection,
         ) as client:
             ws = client.workspaces.run(image="python:3.13")
             assert isinstance(ws, Workspace)
@@ -24,7 +22,7 @@ async def test_sync_matches_async_and_streams(cluster, tmp_path):
                 assert len(list(workspaces)) == 2
             assert isinstance(client.workspaces.list().items[0], Workspace)
             with ws.watch() as events:
-                assert next(events).create.item.metadata.name == "abc"
+                assert next(events).workspace.metadata.name == "abc"
             with ws.terminals.create() as terminal:
                 with terminal.events as events:
                     assert next(events).data == b"hello\x00"
@@ -44,9 +42,7 @@ async def test_sync_matches_async_and_streams(cluster, tmp_path):
 
 
 async def test_sync_close_interrupts_blocking_operation(cluster):
-    client = Cordium(
-        "example.test", auth=AccessToken("token"), host="127.0.0.1", port=cluster.port, tls=False
-    )
+    client = Cordium("example.test", auth=AccessToken("token"), **cluster.connection)
     cluster.main.delay = 20
     request = asyncio.create_task(asyncio.to_thread(client.workspaces.get, "abc"))
     await asyncio.sleep(0.03)
@@ -78,9 +74,7 @@ async def test_sync_contexts_close_after_parent(cluster):
         with Cordium(
             "example.test",
             auth=AccessToken("token"),
-            host="127.0.0.1",
-            port=cluster.port,
-            tls=False,
+            **cluster.connection,
         ) as client:
             workspace = client.workspaces.get("abc")
             with (
@@ -88,7 +82,7 @@ async def test_sync_contexts_close_after_parent(cluster):
                 workspace.exec_stream("printf ready; sleep 60") as command,
                 workspace.terminals.create() as terminal,
             ):
-                assert next(events).create.item.metadata.name == "abc"
+                assert next(events).workspace.metadata.name == "abc"
                 assert next(iter(command)).data == b"ready"
                 with terminal.events as output:
                     assert next(output).type == "output"

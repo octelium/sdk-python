@@ -2,6 +2,7 @@
 
 from octelium.api.main.cordium import v1 as proto
 from octelium.api.main.meta import v1 as meta
+from octelium.sdk import AuthConfig, OcteliumClient
 
 from ._engine import RawServices
 from .auth import (
@@ -10,13 +11,23 @@ from .auth import (
     AssertionFile,
     AuthenticationToken,
     Credentials,
+    OAuth2ClientCredentials,
     TokenProvider,
 )
 from .client import AsyncCordium
 from .errors import CordiumError, ExecError, WorkspaceFailureError
 from .exec import AsyncExecSession, argv, shell_quote
 from .files import AsyncFiles
-from .models import ExecOutput, ExecResult, Page, Ref, Reference, TerminalEvent
+from .models import (
+    ExecOutput,
+    ExecResult,
+    LogEntry,
+    Page,
+    Ref,
+    Reference,
+    TerminalEvent,
+    WorkspaceEvent,
+)
 from .resources import (
     AsyncGitProviders,
     AsyncManagement,
@@ -75,8 +86,11 @@ __all__ = [
     "AuthenticationToken",
     "Assertion",
     "AssertionFile",
+    "OAuth2ClientCredentials",
     "Credentials",
     "TokenProvider",
+    "AuthConfig",
+    "OcteliumClient",
     "AsyncCordium",
     "CordiumError",
     "ExecError",
@@ -91,6 +105,8 @@ __all__ = [
     "ExecOutput",
     "ExecResult",
     "TerminalEvent",
+    "LogEntry",
+    "WorkspaceEvent",
     "AsyncSpaces",
     "AsyncTemplates",
     "AsyncSnapshots",

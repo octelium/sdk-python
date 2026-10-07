@@ -36,10 +36,11 @@ from typing import Generic, Literal, TypeVar, Unpack, cast
 
 import httpx
 from octelium.api.main.cordium import v1 as p
+from octelium.sdk import AuthConfig
 
 from ._portal import Portal
 from .auth import Credentials
-from .models import ExecOutput, ExecResult, Page, Reference, TerminalEvent
+from .models import ExecOutput, ExecResult, LogEntry, Page, Reference, TerminalEvent, WorkspaceEvent
 from .resources import JsonValue, Role, SecretValue
 from .spec import Resources, SecretRef, Task, VolumeMount, WorkspaceOptions
 from .workspaces import State
@@ -134,16 +135,16 @@ for _module, cls in classes:
         Safe for calls from multiple threads. Create a new client after fork.
         domain selects the Cluster, and RPCs default to octelium-api.<domain>:443.
         auth defaults to Octelium credential environment variables. TLS verifies
-        peers; use an SSLContext for custom CAs. Construction does not contact
+        peers; use ssl_context_factory for custom CAs. Construction does not contact
         the Cluster. close() cancels operations and joins the thread.
         """
     result += "    " + repr(doc) + "\n"
     if name == "Cordium":
         result += '''
-    def __init__(self, domain: str | None = None, *, auth: Credentials | None = None, host: str | None = None, port: int = 443, tls: ssl.SSLContext | bool = True, authorized_http_hosts: Sequence[str] = (), allow_insecure_http: bool = False) -> None:
+    def __init__(self, domain: str | None = None, *, auth: Credentials | AuthConfig | None = None, host: str | None = None, port: int = 443, ssl_context_factory: Callable[[], ssl.SSLContext] | None = None, insecure_tls: bool = False, tls_server_name: str = "", authorized_http_hosts: Sequence[str] = (), allow_insecure_http: bool = False) -> None:
         portal = Portal()
         try:
-            value = portal.invoke(lambda: AsyncCordium(domain, auth=auth, host=host, port=port, tls=tls, authorized_http_hosts=authorized_http_hosts, allow_insecure_http=allow_insecure_http))
+            value = portal.invoke(lambda: AsyncCordium(domain, auth=auth, host=host, port=port, ssl_context_factory=ssl_context_factory, insecure_tls=insecure_tls, tls_server_name=tls_server_name, authorized_http_hosts=authorized_http_hosts, allow_insecure_http=allow_insecure_http))
         except BaseException:
             async def cleanup() -> None: pass
             portal.close(cleanup)
@@ -162,7 +163,7 @@ for _module, cls in classes:
         if (
             not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
             or method.name.startswith("_")
-            or (name == "Cordium" and method.name == "raw")
+            or (name == "Cordium" and method.name in ("raw", "octelium"))
         ):
             continue
         if isinstance(method, ast.FunctionDef) and any(

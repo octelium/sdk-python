@@ -5,6 +5,8 @@ import pytest
 from cordium import CordiumError, Ref, Resources, SecretRef
 from cordium import meta as m
 from cordium import proto as p
+from grpclib.const import Status
+from grpclib.exceptions import GRPCError
 
 
 @pytest.mark.parametrize(
@@ -69,6 +71,11 @@ async def test_create_resource_shapes(client, cluster, monkeypatch):
 
     def creator(name):
         async def run(request):
+            if not betterproto.serialized_on_wire(request.spec) or (
+                name in ("secret", "user_secret")
+                and not betterproto.serialized_on_wire(request.data)
+            ):
+                raise GRPCError(Status.INVALID_ARGUMENT, "Resource spec and data must be set")
             received[name] = request
             return request
 
@@ -94,6 +101,8 @@ async def test_create_resource_shapes(client, cluster, monkeypatch):
     assert space.metadata.name == "team.cordium"
     assert space.spec.limit.default_limit.cpu.millicores == 100
     assert space.spec.authorization.disable_ssh
+    assert (await client.spaces.create("bare")).metadata.name == "bare"
+    assert (await client.templates.create("bare.team.cordium")).metadata.name == "bare.team.cordium"
     template = await client.templates.create(
         "python.team.cordium",
         image="python:3.13",
@@ -120,7 +129,8 @@ async def test_create_resource_shapes(client, cluster, monkeypatch):
     assert binary.data.value_bytes == b"\x00\xff"
     key = await client.user_secrets.create_ssh_key("key")
     assert key.spec.type == p.UserSecretSpecType.SSH_KEY
-    assert not betterproto.serialized_on_wire(key.data)
+    assert betterproto.serialized_on_wire(key.data)
+    assert betterproto.which_one_of(key.data, "type")[0] == ""
     provider = await client.git_providers.create_oauth(
         "git.team.cordium",
         "github",
@@ -302,9 +312,9 @@ async def test_preferences_oauth2_and_snapshot_shortcut(client, cluster, monkeyp
     assert (await workspace.snapshot("saved.space")).status.workspace_ref.uid == "immutable"
 
 
-async def test_management_wire():
+async def test_management_wire(tls):
+    from conftest import serve
     from cordium import AccessToken, AsyncCordium
-    from grpclib.server import Server
 
     class Management(p.ManagementServiceBase):
         async def get_cluster_config(self, request):
@@ -313,17 +323,13 @@ async def test_management_wire():
         async def update_cluster_config(self, request):
             return request
 
-    server = Server([Management()])
-    await server.start("127.0.0.1", 0)
-    port = server._server.sockets[0].getsockname()[1]
+    server, connection = await serve(tls, Management())
 
     def edit(config):
         config.metadata.display_name = "changed"
 
     try:
-        async with AsyncCordium(
-            "example.test", auth=AccessToken("token"), host="127.0.0.1", port=port, tls=False
-        ) as client:
+        async with AsyncCordium("example.test", auth=AccessToken("token"), **connection) as client:
             value = await client.management.modify_cluster_config(edit)
             assert value.metadata.name == "cluster" and value.metadata.display_name == "changed"
     finally:

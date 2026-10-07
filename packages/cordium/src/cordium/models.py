@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Generic, Literal, TypeVar
 
+from betterproto import Message
+from octelium.api.main.cordium.v1 import Workspace
 from octelium.api.main.meta.v1 import ObjectReference
 
 from .errors import nonempty
 
 T = TypeVar("T")
+M = TypeVar("M", bound=Message)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -88,10 +92,40 @@ class TerminalEvent:
     rows: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class LogEntry:
+    """Initialization log entry: raw bytes with their time, output stream and stage.
+
+    stage is ``cloning_repo``, ``pulling_image``, ``building_image``, ``task`` or ``unknown``.
+    """
+
+    at: datetime
+    stage: Literal["cloning_repo", "pulling_image", "building_image", "task", "unknown"]
+    stream: Literal["stdout", "stderr"]
+    data: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceEvent:
+    """Watched create, update or delete, with deep-copied protobuf snapshots.
+
+    previous is the resource before an update, when the server reported it.
+    """
+
+    type: Literal["create", "update", "delete"]
+    workspace: Workspace
+    previous: Workspace | None = None
+
+
 def reference(value: Reference) -> ObjectReference:
     if isinstance(value, str):
         return ObjectReference(name=nonempty(value, "Reference"))
     return ObjectReference(name=value.name or "", uid=value.uid or "")
+
+
+def present(message: M) -> M:
+    message._serialized_on_wire = True
+    return message
 
 
 def timeout_value(value: float | None) -> float | None:

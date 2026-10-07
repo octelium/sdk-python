@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           python -m venv /tmp/cordium-wheel-test
-          /tmp/cordium-wheel-test/bin/python -m pip install packages/apis/dist/*.whl packages/cordium/dist/*.whl
+          /tmp/cordium-wheel-test/bin/python -m pip install packages/apis/dist/*.whl packages/sdk/dist/*.whl packages/cordium/dist/*.whl
           cd /tmp
           /tmp/cordium-wheel-test/bin/python -c 'from cordium import Cordium, AsyncCordium, proto; assert proto.Volume; assert proto.WorkspaceSnapshot'
       - name: Install the Cluster SDK wheel with its declared dependencies

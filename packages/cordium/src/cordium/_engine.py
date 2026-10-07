@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import ssl
 from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -11,12 +10,10 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from grpclib.client import Channel
-from grpclib.events import SendRequest, listen
 from grpclib.exceptions import GRPCError, StreamTerminatedError
-from octelium.api.main.auth import v1 as a
 from octelium.api.main.cordium import v1 as p
+from octelium.sdk import AuthenticationError, OcteliumClient
 
-from .auth import AuthManager, Credentials
 from .errors import CordiumError
 from .models import timeout_value
 
@@ -35,17 +32,14 @@ class RawServices:
 class Engine:
     def __init__(
         self,
-        host: str,
-        port: int,
-        tls: ssl.SSLContext | bool,
-        auth: Credentials | None,
-        channel: Channel | None,
+        *,
+        channel: Channel | None = None,
+        octelium: OcteliumClient | None = None,
+        connect: Callable[[], OcteliumClient] | None = None,
     ) -> None:
-        self.host, self.port, self.tls, self.credentials = host, port, tls, auth
         self.channel = channel
-        self.owns_channel = channel is None
-        self.auth_channel: Channel | None = None
-        self.auth: AuthManager | None = None
+        self.octelium = octelium
+        self.connect = connect
         self._raw: RawServices | None = None
         self.closed = False
         self.loop: asyncio.AbstractEventLoop | None = None
@@ -66,17 +60,10 @@ class Engine:
         self.check()
         if self._raw is None:
             if self.channel is None:
-                self.channel = Channel(self.host, self.port, ssl=self.tls)
-                self.auth_channel = Channel(self.host, self.port, ssl=self.tls)
-                if self.credentials is not None:
-                    self.auth = AuthManager(self.credentials, a.MainServiceStub(self.auth_channel))
-
-                    async def authenticate(event: SendRequest) -> None:
-                        assert self.auth is not None
-                        self.check()
-                        event.metadata["authorization"] = f"Bearer {await self.auth.token()}"
-
-                    listen(self.channel, SendRequest, authenticate)
+                if self.octelium is None:
+                    assert self.connect is not None
+                    self.octelium = self.connect()
+                self.channel = self.octelium.channel
             self._raw = RawServices(
                 p.MainServiceStub(self.channel),
                 p.WorkspaceServiceStub(self.channel),
@@ -104,6 +91,8 @@ class Engine:
             raise CordiumError(
                 error.message or error.status.name, error.status.name, details=error.details
             ) from error
+        except AuthenticationError as error:
+            raise CordiumError(str(error), "UNAUTHENTICATED") from error
         except (StreamTerminatedError, OSError) as error:
             if self.closed:
                 raise CordiumError("Cordium client is closed", "CLIENT_CLOSED") from error
@@ -120,11 +109,11 @@ class Engine:
     async def token(self, timeout: float | None = 30) -> str:
         async with self.operation(timeout):
             _ = self.raw
-            if self.auth is None:
+            if self.octelium is None:
                 raise CordiumError(
                     "The injected channel owns its credentials", "FAILED_PRECONDITION"
                 )
-            return await self.auth.token()
+            return await self.octelium.get_access_token()
 
     async def close(self) -> None:
         if self.closed:
@@ -137,11 +126,7 @@ class Engine:
         for task in tasks:
             task.cancel()
         try:
-            if self.auth is not None:
-                await self.auth.close()
-        finally:
-            if self.owns_channel and self.channel is not None:
-                self.channel.close()
-            if self.auth_channel is not None:
-                self.auth_channel.close()
             await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            if self.connect is not None and self.octelium is not None:
+                await self.octelium.close()

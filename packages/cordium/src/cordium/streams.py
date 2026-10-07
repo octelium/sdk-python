@@ -1,4 +1,4 @@
-"""Explicitly closable async streams with bounded event queues."""
+"""Explicitly closable async streams with bounded, backpressured event queues."""
 
 from __future__ import annotations
 
@@ -19,7 +19,8 @@ class AsyncStream(Generic[T]):
     """Single-consumer async iterator with aclose() and async context-manager support.
 
     Use ``async with stream`` when a loop may stop early: Python's async-for does
-    not automatically close an iterator on break. Queue overflow fails explicitly.
+    not automatically close an iterator on break. A full queue pauses reading from
+    the server until the consumer catches up.
     """
 
     def __init__(
@@ -41,6 +42,7 @@ class AsyncStream(Generic[T]):
         self._queue: deque[tuple[T, int]] = deque()
         self._bytes = 0
         self._wake = asyncio.Event()
+        self._drained = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._done = False
         self._error: BaseException | None = None
@@ -58,10 +60,11 @@ class AsyncStream(Generic[T]):
                 source = self._source()
                 async for value in source:
                     size = self._size(value)
-                    if len(self._queue) >= 1024 or self._bytes + size > self._max_bytes:
-                        raise CordiumError(
-                            "Stream consumer exceeded its buffer limit", "RESOURCE_EXHAUSTED"
-                        )
+                    while self._queue and (
+                        len(self._queue) >= 1024 or self._bytes + size > self._max_bytes
+                    ):
+                        self._drained.clear()
+                        await self._drained.wait()
                     self._queue.append((value, size))
                     self._bytes += size
                     self._wake.set()
@@ -100,6 +103,7 @@ class AsyncStream(Generic[T]):
                 if self._queue:
                     value, size = self._queue.popleft()
                     self._bytes -= size
+                    self._drained.set()
                     return value
                 if self._done:
                     raise StopAsyncIteration

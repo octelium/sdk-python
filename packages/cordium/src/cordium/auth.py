@@ -1,21 +1,23 @@
-"""Credential value objects and shared, cancellation-safe session refresh."""
+"""Credential value objects mapped onto the Octelium SDK's authentication."""
 
 from __future__ import annotations
 
 import asyncio
 import inspect
 import os
-import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeAlias
 
-from grpclib.const import Status
-from grpclib.exceptions import GRPCError
-from octelium.api.main.auth import v1 as a
+from octelium.sdk import (
+    AssertionConfig,
+    AuthConfig,
+    AuthTokenConfig,
+    OAuth2ClientCredentialsConfig,
+)
 
-from .errors import CordiumError, nonempty
+from .errors import nonempty
 
 TokenProvider: TypeAlias = Callable[[], str | Awaitable[str]]
 """Callable returning a current access token/assertion; async providers may perform network I/O."""
@@ -52,7 +54,18 @@ class AssertionFile:
     scopes: tuple[str, ...] = ()
 
 
-Credentials: TypeAlias = AccessToken | AuthenticationToken | Assertion | AssertionFile
+@dataclass(frozen=True, slots=True)
+class OAuth2ClientCredentials:
+    """OAuth2 client credentials of an Octelium WORKLOAD User."""
+
+    client_id: str
+    client_secret: str = field(repr=False)
+    scopes: tuple[str, ...] = ()
+
+
+Credentials: TypeAlias = (
+    AccessToken | AuthenticationToken | Assertion | AssertionFile | OAuth2ClientCredentials
+)
 """Supported Cordium/Octelium credential configurations."""
 
 
@@ -68,95 +81,51 @@ def environment_auth() -> Credentials | None:
     return None
 
 
-async def resolve(value: str | TokenProvider) -> str:
-    token = value() if callable(value) else value
-    if inspect.isawaitable(token):
-        token = await token
-    return nonempty(token, "Token")
+def _provider(value: TokenProvider) -> Callable[[], Awaitable[str]]:
+    async def provide() -> str:
+        token = value()
+        if inspect.isawaitable(token):
+            token = await token
+        return token
+
+    return provide
 
 
-class AuthManager:
-    def __init__(self, auth: Credentials, stub: a.MainServiceStub) -> None:
-        self.auth = auth
-        self.stub = stub
-        self.session: a.SessionToken | None = None
-        self.expires_at = 0.0
-        self.pending: asyncio.Task[str] | None = None
-        self.used = False
-        self.closed = False
+def octelium_auth(auth: Credentials | AuthConfig) -> AuthConfig:
+    """Translate Cordium credentials into the Octelium SDK configuration that implements them."""
+    if isinstance(auth, AuthConfig):
+        return auth
+    if isinstance(auth, AccessToken):
+        return AuthConfig(
+            type="access_token",
+            access_token=auth.token if isinstance(auth.token, str) else _provider(auth.token),
+        )
+    if isinstance(auth, AuthenticationToken):
+        return AuthConfig(
+            type="auth_token",
+            auth_token=AuthTokenConfig(
+                token=nonempty(auth.token, "Authentication token"), scopes=auth.scopes
+            ),
+        )
+    if isinstance(auth, Assertion):
+        return AuthConfig(
+            type="assertion",
+            assertion=AssertionConfig(token=_provider(auth.provider), scopes=auth.scopes),
+        )
+    if isinstance(auth, AssertionFile):
+        path = Path(auth.path)
 
-    async def token(self) -> str:
-        if self.closed:
-            raise CordiumError("Client is closed", "CLIENT_CLOSED")
-        if isinstance(self.auth, AccessToken):
-            return await resolve(self.auth.token)
-        if self.session is not None and time.monotonic() < self.expires_at:
-            return self.session.access_token
-        if self.pending is None or self.pending.done():
-            self.pending = asyncio.create_task(self.refresh(), name="cordium-auth-refresh")
-            self.pending.add_done_callback(
-                lambda task: None if task.cancelled() else task.exception()
-            )
-        return await asyncio.shield(self.pending)
+        async def read() -> str:
+            return await asyncio.to_thread(path.read_text, encoding="utf-8")
 
-    async def refresh(self) -> str:
-        async with asyncio.timeout(30):
-            if self.session is not None and self.session.refresh_token:
-                try:
-                    return self.accept(
-                        await self.stub.authenticate_with_refresh_token(
-                            a.AuthenticateWithRefreshTokenRequest(),
-                            timeout=30,
-                            metadata={"x-octelium-refresh-token": self.session.refresh_token},
-                        )
-                    )
-                except GRPCError as error:
-                    if error.status != Status.UNAUTHENTICATED or isinstance(
-                        self.auth, AuthenticationToken
-                    ):
-                        raise
-                    self.session = None
-            if isinstance(self.auth, AuthenticationToken):
-                if self.used:
-                    raise CordiumError(
-                        "Authentication token already attempted; supply new credentials",
-                        "UNAUTHENTICATED",
-                    )
-                self.used = True
-                session = await self.stub.authenticate_with_authentication_token(
-                    a.AuthenticateWithAuthenticationTokenRequest(
-                        authentication_token=nonempty(self.auth.token, "Authentication token"),
-                        scopes=list(self.auth.scopes),
-                    ),
-                    timeout=30,
-                )
-            elif isinstance(self.auth, (Assertion, AssertionFile)):
-                assertion = (
-                    await resolve(self.auth.provider)
-                    if isinstance(self.auth, Assertion)
-                    else await asyncio.to_thread(Path(self.auth.path).read_text, encoding="utf-8")
-                )
-                session = await self.stub.authenticate_with_assertion(
-                    a.AuthenticateWithAssertionRequest(
-                        assertion=nonempty(assertion.strip(), "Assertion"),
-                        scopes=list(self.auth.scopes),
-                    ),
-                    timeout=30,
-                )
-            else:
-                raise CordiumError("Unsupported credentials", "INVALID_ARGUMENT")
-            return self.accept(session)
-
-    def accept(self, session: a.SessionToken) -> str:
-        nonempty(session.access_token, "Server access token")
-        if session.expires_in <= 0:
-            raise CordiumError("Invalid token lifetime from server", "PROTOCOL_ERROR")
-        self.session = session
-        self.expires_at = time.monotonic() + session.expires_in - min(30, session.expires_in / 10)
-        return session.access_token
-
-    async def close(self) -> None:
-        self.closed = True
-        if self.pending is not None:
-            self.pending.cancel()
-            await asyncio.gather(self.pending, return_exceptions=True)
+        return AuthConfig(
+            type="assertion", assertion=AssertionConfig(token=read, scopes=auth.scopes)
+        )
+    if isinstance(auth, OAuth2ClientCredentials):
+        return AuthConfig(
+            type="oauth2_client_credentials",
+            oauth2_client_credentials=OAuth2ClientCredentialsConfig(
+                client_id=auth.client_id, client_secret=auth.client_secret, scopes=auth.scopes
+            ),
+        )
+    raise ValueError("Unsupported credentials")

@@ -9,14 +9,26 @@ from datetime import datetime
 from typing import Literal, Unpack, cast
 
 import betterproto
+from grpclib.const import Status
+from grpclib.exceptions import GRPCError
 from octelium.api.main.cordium import v1 as p
 from octelium.api.main.meta import v1 as m
 
 from ._engine import Engine
-from .errors import CordiumError, WorkspaceFailureError, integer, nonempty
+from .errors import CordiumError, WorkspaceFailureError, integer, nonempty, run_failure
 from .exec import AsyncExecSession, argv
 from .files import AsyncFiles
-from .models import ExecResult, Page, Ref, Reference, reference, timeout_value
+from .models import (
+    ExecResult,
+    LogEntry,
+    Page,
+    Ref,
+    Reference,
+    WorkspaceEvent,
+    present,
+    reference,
+    timeout_value,
+)
 from .resources import AsyncSnapshots, _common, _page, _poll
 from .spec import WorkspaceOptions, create_workspace_spec, variables
 from .streams import AsyncStream
@@ -24,6 +36,15 @@ from .terminals import AsyncTerminals
 
 State = p.WorkspaceStatusState
 """Generated lifecycle enum; PREPARING accepts exec, RUNNING has completed setup."""
+
+_STAGES: dict[
+    int, Literal["cloning_repo", "pulling_image", "building_image", "task", "unknown"]
+] = {
+    p.ListenLogResponseType.TYPE_CLONING_REPO: "cloning_repo",
+    p.ListenLogResponseType.TYPE_PULLING_IMAGE: "pulling_image",
+    p.ListenLogResponseType.TYPE_BUILDING_IMAGE: "building_image",
+    p.ListenLogResponseType.TYPE_TASK: "task",
+}
 
 
 class AsyncWorkspaces:
@@ -40,7 +61,7 @@ class AsyncWorkspaces:
         Select template or snapshot with Ref or name. Convenience options override
         the corresponding fields of a deep-copied generated spec. No start is implicit.
         """
-        spec = create_workspace_spec(**options)
+        spec = present(create_workspace_spec(**options))
         value = await self._engine.call(
             lambda: self._engine.raw.main.create_workspace(
                 p.Workspace(
@@ -71,14 +92,22 @@ class AsyncWorkspaces:
         """Create, start and wait for RUNNING under one total deadline.
 
         Failures leave the workspace in place for diagnosis; no implicit deletion.
-        Region selects placement for this run. poll_interval is in seconds.
+        A CordiumError raised after creation keeps its code and carries the
+        workspace's last fetched state in ``error.workspace``. Region selects
+        placement for this run. poll_interval is in seconds.
         """
         if timeout_value(poll_interval) is None:
             raise ValueError("poll_interval must be positive")
-        async with self._engine.operation(timeout):
-            workspace = await self.create(timeout=None, **options)
-            await workspace.start(region=region, timeout=None)
-            return await workspace.wait_until_running(timeout=None, poll_interval=poll_interval)
+        workspace: AsyncWorkspace | None = None
+        try:
+            async with self._engine.operation(timeout):
+                workspace = await self.create(timeout=None, **options)
+                await workspace.start(region=region, timeout=None)
+                return await workspace.wait_until_running(timeout=None, poll_interval=poll_interval)
+        except CordiumError as error:
+            if workspace is not None and error.workspace is None:
+                error.workspace = workspace.proto
+            raise
 
     async def get(self, ref: Reference, *, timeout: float | None = 30) -> AsyncWorkspace:
         """Fetch an existing workspace by name or immutable UID."""
@@ -169,20 +198,41 @@ class AsyncWorkspaces:
         *,
         timeout: float | None = None,
         max_buffer_bytes: int = 8 * 1024 * 1024,
-    ) -> AsyncStream[p.WatchWorkspaceResponse]:
+    ) -> AsyncStream[WorkspaceEvent]:
         """Subscribe to future create/update/delete events; no initial snapshot or reconnect.
 
-        Use an async context manager when stopping iteration early. Raw event oneofs
-        preserve both old and new resources for update events.
+        Use an async context manager when stopping iteration early. Update events
+        carry the previous resource when the server reports it.
         """
         request = p.WatchWorkspaceRequest(
             workspace_ref=reference(ref) if ref is not None else m.ObjectReference()
         )
+
+        async def events() -> AsyncIterator[WorkspaceEvent]:
+            stream = self._engine.raw.main.watch_workspace(request)
+            try:
+                async for message in stream:
+                    kind, _ = betterproto.which_one_of(message, "type")
+                    if kind == "create":
+                        yield WorkspaceEvent("create", message.create.item)
+                    elif kind == "update":
+                        previous = message.update.old_item
+                        yield WorkspaceEvent(
+                            "update",
+                            message.update.new_item,
+                            previous if betterproto.serialized_on_wire(previous) else None,
+                        )
+                    elif kind == "delete":
+                        yield WorkspaceEvent("delete", message.delete.item)
+            finally:
+                if hasattr(stream, "aclose"):
+                    await stream.aclose()
+
         return AsyncStream(
             self._engine,
-            lambda: self._engine.raw.main.watch_workspace(request),
+            events,
             timeout=timeout,
-            size=lambda event: len(bytes(event)),
+            size=lambda event: len(bytes(event.workspace)) + len(bytes(event.previous or b"")),
             max_bytes=max_buffer_bytes,
         )
 
@@ -224,6 +274,36 @@ class AsyncWorkspace:
     def created_at(self) -> datetime:
         """Creation timestamp, represented as a timezone-aware datetime."""
         return self._value.metadata.created_at
+
+    @property
+    def is_ephemeral(self) -> bool:
+        """Whether storage is discarded when the workspace stops."""
+        return self._value.spec.is_ephemeral
+
+    @property
+    def space_name(self) -> str:
+        """Name of the Space the workspace belongs to."""
+        return self._value.status.space_ref.name
+
+    @property
+    def template_name(self) -> str:
+        """Name of the Template the workspace was created from, or empty."""
+        return self._value.status.template_ref.name
+
+    @property
+    def region_name(self) -> str:
+        """Name of the Region currently hosting the workspace, or empty."""
+        return self._value.status.region_ref.name
+
+    @property
+    def failure(self) -> p.WorkspaceStatusFailure | None:
+        """Deep copy of the current or latest run's failure, if any."""
+        return copy.deepcopy(run_failure(self._value))
+
+    @property
+    def limit(self) -> p.WorkspaceSpecLimit:
+        """Deep copy of the effective compute limits resolved by the Cluster."""
+        return copy.deepcopy(self._value.status.limit)
 
     @property
     def state(self) -> State:
@@ -339,15 +419,22 @@ class AsyncWorkspace:
         region: Reference | None = None,
         timeout: float | None = 30,
     ) -> AsyncWorkspace:
-        """Request an asynchronous start, then refresh; vars/region apply only to this run."""
+        """Request an asynchronous start, then refresh; vars/region apply only to this run.
+
+        Starting a workspace that is already starting or running is a no-op.
+        """
         config = p.StartWorkspaceRequestConfig(
             vars=variables(vars) if vars is not None else [],
             region_ref=reference(region) if region is not None else m.ObjectReference(),
         )
         async with self._engine.operation(timeout):
-            await self._engine.raw.main.start_workspace(
-                p.StartWorkspaceRequest(workspace_ref=reference(self._ref()), config=config)
-            )
+            try:
+                await self._engine.raw.main.start_workspace(
+                    p.StartWorkspaceRequest(workspace_ref=reference(self._ref()), config=config)
+                )
+            except GRPCError as error:
+                if error.status is not Status.ALREADY_EXISTS:
+                    raise
             return await self.refresh(timeout=None)
 
     async def stop(self, *, timeout: float | None = 30) -> AsyncWorkspace:
@@ -384,7 +471,7 @@ class AsyncWorkspace:
     async def wait_until_stopped(
         self, *, timeout: float | None = 300, poll_interval: float = 1
     ) -> AsyncWorkspace:
-        """Wait for STOPPED even when the latest run failed."""
+        """Wait for STOPPED; raise WorkspaceFailureError if the run that stopped had failed."""
         return await self._wait((State.STOPPED,), timeout, poll_interval)
 
     async def _wait(
@@ -392,7 +479,7 @@ class AsyncWorkspace:
     ) -> AsyncWorkspace:
         def done(item: AsyncWorkspace) -> bool:
             if states != (State.STOPPED,):
-                if betterproto.serialized_on_wire(item._value.status.failure):
+                if run_failure(item._value) is not None:
                     raise WorkspaceFailureError(item.proto)
                 if item.is_stopped or item.is_stopping:
                     raise CordiumError(
@@ -400,6 +487,8 @@ class AsyncWorkspace:
                         "WORKSPACE_STOPPED",
                         details=item.proto,
                     )
+            elif item.is_stopped and run_failure(item._value) is not None:
+                raise WorkspaceFailureError(item.proto)
             return item.state in states
 
         return await _poll(
@@ -414,13 +503,13 @@ class AsyncWorkspace:
         env: Mapping[str, str] | None = None,
         root: bool = False,
         stdin: str | bytes | None = None,
-        check: bool = True,
+        check: bool = False,
         timeout: float | None = None,
         max_capture_bytes: int = 1024 * 1024,
     ) -> ExecResult:
         """Run a shell command or safely quoted argv and collect bounded output.
 
-        check=True raises ExecError on a nonzero exit. stdin is initial input, not
+        A nonzero exit is returned in the result; check=True raises ExecError instead. stdin is initial input, not
         an EOF signal: Cordium's protocol cannot half-close stdin. Commands that
         read until EOF need explicit framing (e.g. head -c). Timeout cancels exec.
         """
@@ -451,11 +540,14 @@ class AsyncWorkspace:
         timeout: float | None = None,
         max_capture_bytes: int = 1024 * 1024,
         max_buffer_bytes: int = 8 * 1024 * 1024,
+        kill_grace: float = 10,
     ) -> AsyncExecSession:
         """Start a command; iterate binary stdout/stderr, write input, kill or await its result.
 
         Use ``async with await workspace.exec_stream(...)`` to close on early exit.
-        Exceeding the stream queue fails; capture truncation is reported in ExecResult.
+        A full stream queue pauses reading output until it drains; capture truncation
+        is reported in ExecResult. A killed command that reports no exit within
+        kill_grace seconds ends with exit code -1.
         """
         self._engine.check()
         session = AsyncExecSession(
@@ -471,25 +563,43 @@ class AsyncWorkspace:
             timeout=timeout,
             max_capture_bytes=max_capture_bytes,
             max_buffer_bytes=max_buffer_bytes,
+            kill_grace=kill_grace,
         )
         return await session.ready()
 
     def logs(
         self, *, timeout: float | None = None, max_buffer_bytes: int = 8 * 1024 * 1024
-    ) -> AsyncStream[p.ListenLogResponse]:
-        """Stream initialization logs with raw bytes, timestamps, stage and stdout/stderr mode."""
+    ) -> AsyncStream[LogEntry]:
+        """Stream initialization logs: repository cloning, image pulls and builds, and tasks."""
         request = p.ListenLogRequest(workspace_ref=reference(self._ref()))
+
+        async def entries() -> AsyncIterator[LogEntry]:
+            stream = self._engine.raw.workspace.listen_log(request)
+            try:
+                async for message in stream:
+                    yield LogEntry(
+                        message.created_at,
+                        _STAGES.get(message.type, "unknown"),
+                        "stderr"
+                        if message.mode == p.ListenLogResponseMode.MODE_STDERR
+                        else "stdout",
+                        message.data,
+                    )
+            finally:
+                if hasattr(stream, "aclose"):
+                    await stream.aclose()
+
         return AsyncStream(
             self._engine,
-            lambda: self._engine.raw.workspace.listen_log(request),
+            entries,
             timeout=timeout,
-            size=lambda item: len(item.data),
+            size=lambda entry: len(entry.data),
             max_bytes=max_buffer_bytes,
         )
 
     def watch(
         self, *, timeout: float | None = None, max_buffer_bytes: int = 8 * 1024 * 1024
-    ) -> AsyncStream[p.WatchWorkspaceResponse]:
+    ) -> AsyncStream[WorkspaceEvent]:
         """Subscribe to this workspace's events; does not implicitly update this handle."""
         return AsyncWorkspaces(self._engine).watch(
             self._ref(), timeout=timeout, max_buffer_bytes=max_buffer_bytes

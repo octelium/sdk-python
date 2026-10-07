@@ -15,14 +15,15 @@ from octelium.api.main.cordium import v1 as p
 
 from ._engine import Engine
 from .errors import CordiumError, ExecError, integer, nonempty
-from .models import ExecOutput, ExecResult, Reference, reference
+from .models import ExecOutput, ExecResult, Reference, reference, timeout_value
 
 
 class AsyncExecSession:
     """Running command with ordered async output, write(), kill(), wait(), and aclose().
 
     Use an async context manager to cancel on early iteration exit. wait() drains
-    output if iteration has not started. Captures and streaming queues have separate limits.
+    output if iteration has not started. Captures and streaming queues have separate
+    limits; a full streaming queue pauses reading the command's output until it drains.
     """
 
     def __init__(
@@ -40,8 +41,11 @@ class AsyncExecSession:
         timeout: float | None = None,
         max_capture_bytes: int = 1024 * 1024,
         max_buffer_bytes: int = 8 * 1024 * 1024,
+        kill_grace: float = 10,
     ) -> None:
         self.command = nonempty(command, "Command")
+        if timeout_value(kill_grace) is None:
+            raise ValueError("kill_grace must be positive")
         self._initial = p.ExecRequest(
             request=p.ExecRequestRequest(
                 workspace_ref=reference(workspace),
@@ -55,12 +59,14 @@ class AsyncExecSession:
             )
         )
         self._engine, self._timeout, self._check = engine, timeout, check
+        self._kill_grace = kill_grace
         self._capture = integer(max_capture_bytes, "max_capture_bytes")
         self._buffer = integer(max_buffer_bytes, "max_buffer_bytes", 1)
         self._stdin, self._interactive = stdin, interactive
         self._stream: Stream[p.ExecRequest, p.ExecResponse] | None = None
         self._ready = asyncio.Event()
         self._wake = asyncio.Event()
+        self._drained = asyncio.Event()
         self._writes = asyncio.Lock()
         self._queue: deque[ExecOutput] = deque()
         self._queued = 0
@@ -68,6 +74,8 @@ class AsyncExecSession:
         self._iterating = False
         self._reading = False
         self._killed = False
+        self._kill_expired = False
+        self._kill_timer: asyncio.TimerHandle | None = None
         self._engine.check()
         self._task = asyncio.create_task(self._run(), name="cordium-exec")
         self._task.add_done_callback(lambda task: None if task.cancelled() else task.exception())
@@ -118,12 +126,16 @@ class AsyncExecSession:
                         count = min(len(data), max(0, self._capture - len(target)))
                         target.extend(data[:count])
                         truncated |= count < len(data)
+                        while (
+                            not self._discard
+                            and self._queue
+                            and (
+                                self._queued + len(data) > self._buffer or len(self._queue) >= 4096
+                            )
+                        ):
+                            self._drained.clear()
+                            await self._drained.wait()
                         if not self._discard:
-                            if self._queued + len(data) > self._buffer or len(self._queue) >= 4096:
-                                raise CordiumError(
-                                    "Command output exceeded the stream buffer",
-                                    "RESOURCE_EXHAUSTED",
-                                )
                             self._queue.append(
                                 ExecOutput("stdout" if kind == "stdout" else "stderr", data)
                             )
@@ -140,8 +152,15 @@ class AsyncExecSession:
                 and sender.exception() is not None
             ):
                 raise (sender.exception() or RuntimeError("stdin write failed")) from None
+            if self._kill_expired:
+                result = ExecResult(-1, bytes(out), bytes(err), truncated, True)
+                if self._check:
+                    raise ExecError(result) from None
+                return result
             raise
         finally:
+            if self._kill_timer is not None:
+                self._kill_timer.cancel()
             if sender is not None:
                 sender.cancel()
                 await asyncio.gather(sender, return_exceptions=True)
@@ -165,6 +184,8 @@ class AsyncExecSession:
             raise CordiumError("stdin is disabled", "FAILED_PRECONDITION")
         await self._ready.wait()
         if self._task.done():
+            if not self._task.cancelled() and (error := self._task.exception()) is not None:
+                raise error
             raise CordiumError("Command has finished", "FAILED_PRECONDITION")
         assert self._stream is not None
         payload = data.encode() if isinstance(data, str) else bytes(data)
@@ -180,7 +201,11 @@ class AsyncExecSession:
                     )
 
     async def kill(self) -> None:
-        """Terminate the remote process group; the server normally reports exit code -1."""
+        """Terminate the remote process group; the server normally reports exit code -1.
+
+        A command whose exit is not reported within kill_grace seconds ends the session
+        on its own with exit code -1 and killed set.
+        """
         await self._ready.wait()
         if self._task.done():
             return
@@ -189,6 +214,13 @@ class AsyncExecSession:
             async with self._engine.operation(None):
                 self._killed = True
                 await self._stream.send_message(p.ExecRequest(kill=p.ExecRequestKill()))
+        if self._kill_timer is None and not self._task.done():
+            self._kill_timer = asyncio.get_running_loop().call_later(self._kill_grace, self._expire)
+
+    def _expire(self) -> None:
+        if not self._task.done():
+            self._kill_expired = True
+            self._task.cancel()
 
     async def wait(self) -> ExecResult:
         """Await completion. Before iteration starts, selects drain-only consumption."""
@@ -196,6 +228,7 @@ class AsyncExecSession:
             self._discard = True
             self._queue.clear()
             self._queued = 0
+            self._drained.set()
         try:
             return await asyncio.shield(self._task)
         except asyncio.CancelledError:
@@ -224,6 +257,7 @@ class AsyncExecSession:
                 if self._queue:
                     result = self._queue.popleft()
                     self._queued -= len(result.data)
+                    self._drained.set()
                     return result
                 if self._task.done():
                     raise StopAsyncIteration
@@ -260,6 +294,8 @@ def shell_quote(value: str) -> str:
     """Quote one literal POSIX shell argument; reject NUL bytes."""
     if "\0" in value:
         raise ValueError("Shell arguments cannot contain NUL bytes")
+    if "=" in value:
+        return "'" + value.replace("'", "'\"'\"'") + "'"
     return shlex.quote(value)
 
 

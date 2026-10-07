@@ -48,29 +48,45 @@ Assertion file reread on authentication, suitable for rotating Kubernetes projec
 AssertionFile(path: 'str | Path', scopes: 'tuple[str, ...]' = ()) -> None
 ```
 
+## `OAuth2ClientCredentials`
+
+OAuth2 client credentials of an Octelium WORKLOAD User.
+
 ## `Credentials`
 
-Type alias: `cordium.auth.AccessToken | cordium.auth.AuthenticationToken | cordium.auth.Assertion | cordium.auth.AssertionFile`.
+Type alias: `cordium.auth.AccessToken | cordium.auth.AuthenticationToken | cordium.auth.Assertion | cordium.auth.AssertionFile | cordium.auth.OAuth2ClientCredentials`.
 
 ## `TokenProvider`
 
 Type alias: `collections.abc.Callable[[], str | collections.abc.Awaitable[str]]`.
 
+## `AuthConfig`
+
+AuthConfig(type: "Literal['auth_token', 'oauth2_client_credentials', 'access_token', 'assertion']", auth_token: 'AuthTokenConfig | None' = None, oauth2_client_credentials: 'OAuth2ClientCredentialsConfig | None' = None, access_token: 'str | Callable[[], Awaitable[str]] | None' = None, assertion: 'AssertionConfig | None' = None)
+
+## `OcteliumClient`
+
+OcteliumClient
+
 ## `AsyncCordium`
 
 Native asyncio SDK, bound to its first event loop. Use ``async with``.
 
-domain is a bare Cluster domain, e.g. ``example.com``. RPCs connect to
-``octelium-api.<domain>:443`` unless host/port are supplied. TLS verification is enabled;
-supply an SSLContext for custom CAs or mutual TLS. tls=False is for local tests.
+Authentication, session refresh and the gRPC channel are provided by the Octelium
+SDK's OcteliumClient. domain is a bare Cluster domain, e.g. ``example.com``. RPCs
+connect to ``octelium-api.<domain>:443`` unless host/port are supplied. TLS
+verification is enabled; supply ssl_context_factory for custom CAs or mutual TLS
+and tls_server_name to verify a certificate name other than host.
 
 Omitted domain/auth use CORDIUM_DOMAIN (then OCTELIUM_DOMAIN) and Octelium
-credential environment variables. An injected channel must already implement
+credential environment variables. auth also accepts an octelium.sdk.AuthConfig.
+A supplied octelium client is reused with its credentials and connection, and
+aclose() leaves it open. An injected channel must already implement
 authentication and remains caller-owned. Injected HTTP clients also remain
 caller-owned. No requests or sockets are created by this constructor.
 
 ```python
-AsyncCordium(domain: 'str | None' = None, *, auth: 'Credentials | None' = None, host: 'str | None' = None, port: 'int' = 443, tls: 'ssl.SSLContext | bool' = True, channel: 'Channel | None' = None, http_client: 'httpx.AsyncClient | None' = None, authorized_http_hosts: 'Sequence[str]' = (), allow_insecure_http: 'bool' = False) -> 'None'
+AsyncCordium(domain: 'str | None' = None, *, auth: 'Credentials | AuthConfig | None' = None, octelium: 'OcteliumClient | None' = None, host: 'str | None' = None, port: 'int' = 443, ssl_context_factory: 'Callable[[], ssl.SSLContext] | None' = None, insecure_tls: 'bool' = False, tls_server_name: 'str' = '', channel: 'Channel | None' = None, http_client: 'httpx.AsyncClient | None' = None, authorized_http_hosts: 'Sequence[str]' = (), allow_insecure_http: 'bool' = False) -> 'None'
 ```
 
 ### `AsyncCordium.domain`
@@ -80,6 +96,10 @@ Normalized Cluster domain used for application HTTP authorization.
 ### `AsyncCordium.raw`
 
 Authenticated generated async stubs; caller owns deadlines and stream cleanup.
+
+### `AsyncCordium.octelium`
+
+The Octelium client that authenticates this client, or None with an injected channel.
 
 ### `AsyncCordium.workspaces`
 
@@ -143,10 +163,12 @@ Obtain a current token, refreshing a managed session if necessary. Treat as a se
 async request(self, method: 'str', url: 'str', *, headers: 'Mapping[str, str] | None' = None, content: 'str | bytes | None' = None, json: 'JsonValue' = None, timeout: 'float | None' = 30, max_response_bytes: 'int' = 16777216) -> 'httpx.Response'
 ```
 
-Call a workspace application with current bearer authentication.
+Call a workspace application with current Octelium authentication.
 
 Only HTTPS Cluster-domain/subdomain destinations and explicitly authorized
-hosts are allowed. Redirects are returned without following. The response
+hosts are allowed. Credentials travel in the x-octelium-auth header, leaving
+the application's own Authorization header alone. Redirects are returned
+without following. The response
 body is buffered up to max_response_bytes; non-2xx statuses are returned,
 so call response.raise_for_status() if desired. timeout covers authentication
 and the full body. HTTP transport failures use code UNAVAILABLE.
@@ -157,7 +179,7 @@ and the full body. HTTP transport failures use code UNAVAILABLE.
 async aclose(self) -> 'None'
 ```
 
-Cancel SDK operations and close owned transports; never stop or delete resources.
+Cancel SDK operations and close the owned Octelium client; never stop or delete resources.
 
 ## `CordiumError`
 
@@ -165,9 +187,11 @@ RPC or SDK failure with a stable ``code`` and optional transport ``details``.
 
 ``code`` is a gRPC status name (e.g. NOT_FOUND) or an SDK code such as
 CLIENT_CLOSED or PROTOCOL_ERROR. The original exception is chained as __cause__.
+``workspace`` is the last fetched state of a workspace that run() created
+before failing, so that it can be inspected and deleted.
 
 ```python
-CordiumError(message: 'str', code: 'str' = 'UNKNOWN', *, details: 'object' = None) -> 'None'
+CordiumError(message: 'str', code: 'str' = 'UNKNOWN', *, details: 'object' = None, workspace: 'Workspace | None' = None) -> 'None'
 ```
 
 ## `ExecError`
@@ -191,7 +215,8 @@ WorkspaceFailureError(workspace: 'Workspace') -> 'None'
 Running command with ordered async output, write(), kill(), wait(), and aclose().
 
 Use an async context manager to cancel on early iteration exit. wait() drains
-output if iteration has not started. Captures and streaming queues have separate limits.
+output if iteration has not started. Captures and streaming queues have separate
+limits; a full streaming queue pauses reading the command's output until it drains.
 
 ### `AsyncExecSession.ready`
 
@@ -216,6 +241,9 @@ async kill(self) -> 'None'
 ```
 
 Terminate the remote process group; the server normally reports exit code -1.
+
+A command whose exit is not reported within kill_grace seconds ends the session
+on its own with exit code -1 and killed set.
 
 ### `AsyncExecSession.wait`
 
@@ -256,11 +284,12 @@ File operations requiring POSIX sh, cat, head, base64, mkdir and rm remotely.
 Transfers use fixed-length base64 input because exec cannot signal stdin EOF.
 Local downloads are atomic; remote writes may leave a partial file on failure.
 Paths are literal and never expanded by the shell (including ~ and $HOME).
+Every helper defaults to a five-minute timeout.
 
 ### `AsyncFiles.read_bytes`
 
 ```python
-async read_bytes(self, path: 'str', *, max_bytes: 'int' = 16777216, root: 'bool' = False, timeout: 'float | None' = 30) -> 'bytes'
+async read_bytes(self, path: 'str', *, max_bytes: 'int' = 67108864, root: 'bool' = False, timeout: 'float | None' = 300) -> 'bytes'
 ```
 
 Read a binary file, raising RESOURCE_EXHAUSTED instead of silently truncating.
@@ -268,7 +297,7 @@ Read a binary file, raising RESOURCE_EXHAUSTED instead of silently truncating.
 ### `AsyncFiles.read_text`
 
 ```python
-async read_text(self, path: 'str', *, encoding: 'str' = 'utf-8', errors: 'str' = 'strict', max_bytes: 'int' = 16777216, root: 'bool' = False, timeout: 'float | None' = 30) -> 'str'
+async read_text(self, path: 'str', *, encoding: 'str' = 'utf-8', errors: 'str' = 'strict', max_bytes: 'int' = 67108864, root: 'bool' = False, timeout: 'float | None' = 300) -> 'str'
 ```
 
 Read and decode a bounded file; invalid text raises UnicodeDecodeError by default.
@@ -276,15 +305,15 @@ Read and decode a bounded file; invalid text raises UnicodeDecodeError by defaul
 ### `AsyncFiles.write_bytes`
 
 ```python
-async write_bytes(self, path: 'str', data: 'bytes', *, root: 'bool' = False, timeout: 'float | None' = 30) -> 'None'
+async write_bytes(self, path: 'str', data: 'bytes', *, root: 'bool' = False, timeout: 'float | None' = 300) -> 'None'
 ```
 
-Create or truncate a remote file with exact bytes; parent directories must exist.
+Create or truncate a remote file with exact bytes, creating parent directories.
 
 ### `AsyncFiles.write_text`
 
 ```python
-async write_text(self, path: 'str', text: 'str', *, encoding: 'str' = 'utf-8', errors: 'str' = 'strict', root: 'bool' = False, timeout: 'float | None' = 30) -> 'None'
+async write_text(self, path: 'str', text: 'str', *, encoding: 'str' = 'utf-8', errors: 'str' = 'strict', root: 'bool' = False, timeout: 'float | None' = 300) -> 'None'
 ```
 
 Encode text and create or truncate a remote file.
@@ -305,13 +334,13 @@ async download(self, remote_path: 'str', local_path: 'str | Path', *, root: 'boo
 
 Stream into a private temporary file and atomically replace the local destination.
 
-A failed transfer preserves an existing destination. Parent directories must
-exist. The new file has mode 0600 on POSIX; remote permissions are not copied.
+A failed transfer preserves an existing destination. Missing parent directories
+are created. The new file has mode 0600 on POSIX; remote permissions are not copied.
 
 ### `AsyncFiles.mkdir`
 
 ```python
-async mkdir(self, path: 'str', *, parents: 'bool' = True, root: 'bool' = False, timeout: 'float | None' = 30) -> 'None'
+async mkdir(self, path: 'str', *, parents: 'bool' = True, root: 'bool' = False, timeout: 'float | None' = 300) -> 'None'
 ```
 
 Create a directory, optionally creating its parents.
@@ -319,7 +348,7 @@ Create a directory, optionally creating its parents.
 ### `AsyncFiles.remove`
 
 ```python
-async remove(self, path: 'str', *, recursive: 'bool' = False, missing_ok: 'bool' = False, root: 'bool' = False, timeout: 'float | None' = 30) -> 'None'
+async remove(self, path: 'str', *, recursive: 'bool' = False, missing_ok: 'bool' = False, root: 'bool' = False, timeout: 'float | None' = 300) -> 'None'
 ```
 
 Remove a literal file/path. Directory recursion must be requested explicitly.
@@ -381,6 +410,18 @@ PTY event: output bytes, resize dimensions, or remote shell closure.
 ```python
 TerminalEvent(type: "Literal['output', 'resize', 'close']", data: 'bytes' = b'', cols: 'int' = 0, rows: 'int' = 0) -> None
 ```
+
+## `LogEntry`
+
+Initialization log entry: raw bytes with their time, output stream and stage.
+
+stage is ``cloning_repo``, ``pulling_image``, ``building_image``, ``task`` or ``unknown``.
+
+## `WorkspaceEvent`
+
+Watched create, update or delete, with deep-copied protobuf snapshots.
+
+previous is the resource before an update, when the server reported it.
 
 ## `AsyncSpaces`
 
@@ -1145,7 +1186,8 @@ create_workspace_spec(**options: 'Unpack[WorkspaceOptions]') -> 'p.WorkspaceSpec
 Single-consumer async iterator with aclose() and async context-manager support.
 
 Use ``async with stream`` when a loop may stop early: Python's async-for does
-not automatically close an iterator on break. Queue overflow fails explicitly.
+not automatically close an iterator on break. A full queue pauses reading from
+the server until the consumer catches up.
 
 ### `AsyncStream.aclose`
 
@@ -1262,6 +1304,30 @@ Optional human-readable label.
 
 Creation timestamp, represented as a timezone-aware datetime.
 
+### `AsyncWorkspace.is_ephemeral`
+
+Whether storage is discarded when the workspace stops.
+
+### `AsyncWorkspace.space_name`
+
+Name of the Space the workspace belongs to.
+
+### `AsyncWorkspace.template_name`
+
+Name of the Template the workspace was created from, or empty.
+
+### `AsyncWorkspace.region_name`
+
+Name of the Region currently hosting the workspace, or empty.
+
+### `AsyncWorkspace.failure`
+
+Deep copy of the current or latest run's failure, if any.
+
+### `AsyncWorkspace.limit`
+
+Deep copy of the effective compute limits resolved by the Cluster.
+
 ### `AsyncWorkspace.state`
 
 Last observed lifecycle state.
@@ -1357,6 +1423,8 @@ async start(self, *, vars: 'Mapping[str, str] | None' = None, region: 'Reference
 
 Request an asynchronous start, then refresh; vars/region apply only to this run.
 
+Starting a workspace that is already starting or running is a no-op.
+
 ### `AsyncWorkspace.stop`
 
 ```python
@@ -1405,43 +1473,45 @@ Wait until PREPARING or RUNNING accepts commands; setup may still be running.
 async wait_until_stopped(self, *, timeout: 'float | None' = 300, poll_interval: 'float' = 1) -> 'AsyncWorkspace'
 ```
 
-Wait for STOPPED even when the latest run failed.
+Wait for STOPPED; raise WorkspaceFailureError if the run that stopped had failed.
 
 ### `AsyncWorkspace.exec`
 
 ```python
-async exec(self, command: 'str | Sequence[str]', *, cwd: 'str' = '', env: 'Mapping[str, str] | None' = None, root: 'bool' = False, stdin: 'str | bytes | None' = None, check: 'bool' = True, timeout: 'float | None' = None, max_capture_bytes: 'int' = 1048576) -> 'ExecResult'
+async exec(self, command: 'str | Sequence[str]', *, cwd: 'str' = '', env: 'Mapping[str, str] | None' = None, root: 'bool' = False, stdin: 'str | bytes | None' = None, check: 'bool' = False, timeout: 'float | None' = None, max_capture_bytes: 'int' = 1048576) -> 'ExecResult'
 ```
 
 Run a shell command or safely quoted argv and collect bounded output.
 
-check=True raises ExecError on a nonzero exit. stdin is initial input, not
+A nonzero exit is returned in the result; check=True raises ExecError instead. stdin is initial input, not
 an EOF signal: Cordium's protocol cannot half-close stdin. Commands that
 read until EOF need explicit framing (e.g. head -c). Timeout cancels exec.
 
 ### `AsyncWorkspace.exec_stream`
 
 ```python
-async exec_stream(self, command: 'str | Sequence[str]', *, cwd: 'str' = '', env: 'Mapping[str, str] | None' = None, root: 'bool' = False, stdin: 'str | bytes | None' = None, interactive: 'bool' = True, check: 'bool' = False, timeout: 'float | None' = None, max_capture_bytes: 'int' = 1048576, max_buffer_bytes: 'int' = 8388608) -> 'AsyncExecSession'
+async exec_stream(self, command: 'str | Sequence[str]', *, cwd: 'str' = '', env: 'Mapping[str, str] | None' = None, root: 'bool' = False, stdin: 'str | bytes | None' = None, interactive: 'bool' = True, check: 'bool' = False, timeout: 'float | None' = None, max_capture_bytes: 'int' = 1048576, max_buffer_bytes: 'int' = 8388608, kill_grace: 'float' = 10) -> 'AsyncExecSession'
 ```
 
 Start a command; iterate binary stdout/stderr, write input, kill or await its result.
 
 Use ``async with await workspace.exec_stream(...)`` to close on early exit.
-Exceeding the stream queue fails; capture truncation is reported in ExecResult.
+A full stream queue pauses reading output until it drains; capture truncation
+is reported in ExecResult. A killed command that reports no exit within
+kill_grace seconds ends with exit code -1.
 
 ### `AsyncWorkspace.logs`
 
 ```python
-logs(self, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'AsyncStream[p.ListenLogResponse]'
+logs(self, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'AsyncStream[LogEntry]'
 ```
 
-Stream initialization logs with raw bytes, timestamps, stage and stdout/stderr mode.
+Stream initialization logs: repository cloning, image pulls and builds, and tasks.
 
 ### `AsyncWorkspace.watch`
 
 ```python
-watch(self, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'AsyncStream[p.WatchWorkspaceResponse]'
+watch(self, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'AsyncStream[WorkspaceEvent]'
 ```
 
 Subscribe to this workspace's events; does not implicitly update this handle.
@@ -1486,7 +1556,9 @@ async run(self, *, timeout: 'float | None' = 300, poll_interval: 'float' = 1, re
 Create, start and wait for RUNNING under one total deadline.
 
 Failures leave the workspace in place for diagnosis; no implicit deletion.
-Region selects placement for this run. poll_interval is in seconds.
+A CordiumError raised after creation keeps its code and carries the
+workspace's last fetched state in ``error.workspace``. Region selects
+placement for this run. poll_interval is in seconds.
 
 ### `AsyncWorkspaces.get`
 
@@ -1531,13 +1603,13 @@ Replace a fetched protobuf resource once; no retry of version conflicts.
 ### `AsyncWorkspaces.watch`
 
 ```python
-watch(self, ref: 'Reference | None' = None, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'AsyncStream[p.WatchWorkspaceResponse]'
+watch(self, ref: 'Reference | None' = None, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'AsyncStream[WorkspaceEvent]'
 ```
 
 Subscribe to future create/update/delete events; no initial snapshot or reconnect.
 
-Use an async context manager when stopping iteration early. Raw event oneofs
-preserve both old and new resources for update events.
+Use an async context manager when stopping iteration early. Update events
+carry the previous resource when the server reports it.
 
 ## `State`
 
@@ -1550,11 +1622,11 @@ Blocking Cordium SDK with one owned event-loop thread; use with.
 Safe for calls from multiple threads. Create a new client after fork.
 domain selects the Cluster, and RPCs default to octelium-api.<domain>:443.
 auth defaults to Octelium credential environment variables. TLS verifies
-peers; use an SSLContext for custom CAs. Construction does not contact
+peers; use ssl_context_factory for custom CAs. Construction does not contact
 the Cluster. close() cancels operations and joins the thread.
 
 ```python
-Cordium(domain: 'str | None' = None, *, auth: 'Credentials | None' = None, host: 'str | None' = None, port: 'int' = 443, tls: 'ssl.SSLContext | bool' = True, authorized_http_hosts: 'Sequence[str]' = (), allow_insecure_http: 'bool' = False) -> 'None'
+Cordium(domain: 'str | None' = None, *, auth: 'Credentials | AuthConfig | None' = None, host: 'str | None' = None, port: 'int' = 443, ssl_context_factory: 'Callable[[], ssl.SSLContext] | None' = None, insecure_tls: 'bool' = False, tls_server_name: 'str' = '', authorized_http_hosts: 'Sequence[str]' = (), allow_insecure_http: 'bool' = False) -> 'None'
 ```
 
 ### `Cordium.call`
@@ -1634,10 +1706,12 @@ Obtain a current token, refreshing a managed session if necessary. Treat as a se
 request(self, method: 'str', url: 'str', *, headers: 'Mapping[str, str] | None' = None, content: 'str | bytes | None' = None, json: 'JsonValue' = None, timeout: 'float | None' = 30, max_response_bytes: 'int' = 16777216) -> 'httpx.Response'
 ```
 
-Call a workspace application with current bearer authentication.
+Call a workspace application with current Octelium authentication.
 
 Only HTTPS Cluster-domain/subdomain destinations and explicitly authorized
-hosts are allowed. Redirects are returned without following. The response
+hosts are allowed. Credentials travel in the x-octelium-auth header, leaving
+the application's own Authorization header alone. Redirects are returned
+without following. The response
 body is buffered up to max_response_bytes; non-2xx statuses are returned,
 so call response.raise_for_status() if desired. timeout covers authentication
 and the full body. HTTP transport failures use code UNAVAILABLE.
@@ -1648,7 +1722,7 @@ and the full body. HTTP transport failures use code UNAVAILABLE.
 close(self) -> 'None'
 ```
 
-Cancel SDK operations and close owned transports; never stop or delete resources.
+Cancel SDK operations and close the owned Octelium client; never stop or delete resources.
 
 ## `Workspaces`
 
@@ -1674,7 +1748,9 @@ run(self, *, timeout: 'float | None' = 300, poll_interval: 'float' = 1, region: 
 Create, start and wait for RUNNING under one total deadline.
 
 Failures leave the workspace in place for diagnosis; no implicit deletion.
-Region selects placement for this run. poll_interval is in seconds.
+A CordiumError raised after creation keeps its code and carries the
+workspace's last fetched state in ``error.workspace``. Region selects
+placement for this run. poll_interval is in seconds.
 
 ### `Workspaces.get`
 
@@ -1719,13 +1795,13 @@ Replace a fetched protobuf resource once; no retry of version conflicts.
 ### `Workspaces.watch`
 
 ```python
-watch(self, ref: 'Reference | None' = None, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'Stream[p.WatchWorkspaceResponse]'
+watch(self, ref: 'Reference | None' = None, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'Stream[WorkspaceEvent]'
 ```
 
 Subscribe to future create/update/delete events; no initial snapshot or reconnect.
 
-Use an context manager when stopping iteration early. Raw event oneofs
-preserve both old and new resources for update events.
+Use an context manager when stopping iteration early. Update events
+carry the previous resource when the server reports it.
 
 ## `Workspace`
 
@@ -1753,6 +1829,30 @@ Optional human-readable label.
 ### `Workspace.created_at`
 
 Creation timestamp, represented as a timezone-aware datetime.
+
+### `Workspace.is_ephemeral`
+
+Whether storage is discarded when the workspace stops.
+
+### `Workspace.space_name`
+
+Name of the Space the workspace belongs to.
+
+### `Workspace.template_name`
+
+Name of the Template the workspace was created from, or empty.
+
+### `Workspace.region_name`
+
+Name of the Region currently hosting the workspace, or empty.
+
+### `Workspace.failure`
+
+Deep copy of the current or latest run's failure, if any.
+
+### `Workspace.limit`
+
+Deep copy of the effective compute limits resolved by the Cluster.
 
 ### `Workspace.state`
 
@@ -1849,6 +1949,8 @@ start(self, *, vars: 'Mapping[str, str] | None' = None, region: 'Reference | Non
 
 Request an asynchronous start, then refresh; vars/region apply only to this run.
 
+Starting a workspace that is already starting or running is a no-op.
+
 ### `Workspace.stop`
 
 ```python
@@ -1897,43 +1999,45 @@ Wait until PREPARING or RUNNING accepts commands; setup may still be running.
 wait_until_stopped(self, *, timeout: 'float | None' = 300, poll_interval: 'float' = 1) -> 'Workspace'
 ```
 
-Wait for STOPPED even when the latest run failed.
+Wait for STOPPED; raise WorkspaceFailureError if the run that stopped had failed.
 
 ### `Workspace.exec`
 
 ```python
-exec(self, command: 'str | Sequence[str]', *, cwd: 'str' = '', env: 'Mapping[str, str] | None' = None, root: 'bool' = False, stdin: 'str | bytes | None' = None, check: 'bool' = True, timeout: 'float | None' = None, max_capture_bytes: 'int' = 1048576) -> 'ExecResult'
+exec(self, command: 'str | Sequence[str]', *, cwd: 'str' = '', env: 'Mapping[str, str] | None' = None, root: 'bool' = False, stdin: 'str | bytes | None' = None, check: 'bool' = False, timeout: 'float | None' = None, max_capture_bytes: 'int' = 1048576) -> 'ExecResult'
 ```
 
 Run a shell command or safely quoted argv and collect bounded output.
 
-check=True raises ExecError on a nonzero exit. stdin is initial input, not
+A nonzero exit is returned in the result; check=True raises ExecError instead. stdin is initial input, not
 an EOF signal: Cordium's protocol cannot half-close stdin. Commands that
 read until EOF need explicit framing (e.g. head -c). Timeout cancels exec.
 
 ### `Workspace.exec_stream`
 
 ```python
-exec_stream(self, command: 'str | Sequence[str]', *, cwd: 'str' = '', env: 'Mapping[str, str] | None' = None, root: 'bool' = False, stdin: 'str | bytes | None' = None, interactive: 'bool' = True, check: 'bool' = False, timeout: 'float | None' = None, max_capture_bytes: 'int' = 1048576, max_buffer_bytes: 'int' = 8388608) -> 'ExecSession'
+exec_stream(self, command: 'str | Sequence[str]', *, cwd: 'str' = '', env: 'Mapping[str, str] | None' = None, root: 'bool' = False, stdin: 'str | bytes | None' = None, interactive: 'bool' = True, check: 'bool' = False, timeout: 'float | None' = None, max_capture_bytes: 'int' = 1048576, max_buffer_bytes: 'int' = 8388608, kill_grace: 'float' = 10) -> 'ExecSession'
 ```
 
 Start a command; iterate binary stdout/stderr, write input, kill or await its result.
 
 Use ``with workspace.exec_stream(...)`` to close on early exit.
-Exceeding the stream queue fails; capture truncation is reported in ExecResult.
+A full stream queue pauses reading output until it drains; capture truncation
+is reported in ExecResult. A killed command that reports no exit within
+kill_grace seconds ends with exit code -1.
 
 ### `Workspace.logs`
 
 ```python
-logs(self, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'Stream[p.ListenLogResponse]'
+logs(self, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'Stream[LogEntry]'
 ```
 
-Stream initialization logs with raw bytes, timestamps, stage and stdout/stderr mode.
+Stream initialization logs: repository cloning, image pulls and builds, and tasks.
 
 ### `Workspace.watch`
 
 ```python
-watch(self, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'Stream[p.WatchWorkspaceResponse]'
+watch(self, *, timeout: 'float | None' = None, max_buffer_bytes: 'int' = 8388608) -> 'Stream[WorkspaceEvent]'
 ```
 
 Subscribe to this workspace's events; does not implicitly update this handle.
@@ -1959,7 +2063,8 @@ Revoke sharing of a named application and refresh the cache.
 Running command with ordered async output, write(), kill(), wait(), and close().
 
 Use an async context manager to cancel on early iteration exit. wait() drains
-output if iteration has not started. Captures and streaming queues have separate limits.
+output if iteration has not started. Captures and streaming queues have separate
+limits; a full streaming queue pauses reading the command's output until it drains.
 
 ### `ExecSession.ready`
 
@@ -1985,6 +2090,9 @@ kill(self) -> 'None'
 
 Terminate the remote process group; the server normally reports exit code -1.
 
+A command whose exit is not reported within kill_grace seconds ends the session
+on its own with exit code -1 and killed set.
+
 ### `ExecSession.wait`
 
 ```python
@@ -2008,11 +2116,12 @@ File operations requiring POSIX sh, cat, head, base64, mkdir and rm remotely.
 Transfers use fixed-length base64 input because exec cannot signal stdin EOF.
 Local downloads are atomic; remote writes may leave a partial file on failure.
 Paths are literal and never expanded by the shell (including ~ and $HOME).
+Every helper defaults to a five-minute timeout.
 
 ### `Files.read_bytes`
 
 ```python
-read_bytes(self, path: 'str', *, max_bytes: 'int' = 16777216, root: 'bool' = False, timeout: 'float | None' = 30) -> 'bytes'
+read_bytes(self, path: 'str', *, max_bytes: 'int' = 67108864, root: 'bool' = False, timeout: 'float | None' = 300) -> 'bytes'
 ```
 
 Read a binary file, raising RESOURCE_EXHAUSTED instead of silently truncating.
@@ -2020,7 +2129,7 @@ Read a binary file, raising RESOURCE_EXHAUSTED instead of silently truncating.
 ### `Files.read_text`
 
 ```python
-read_text(self, path: 'str', *, encoding: 'str' = 'utf-8', errors: 'str' = 'strict', max_bytes: 'int' = 16777216, root: 'bool' = False, timeout: 'float | None' = 30) -> 'str'
+read_text(self, path: 'str', *, encoding: 'str' = 'utf-8', errors: 'str' = 'strict', max_bytes: 'int' = 67108864, root: 'bool' = False, timeout: 'float | None' = 300) -> 'str'
 ```
 
 Read and decode a bounded file; invalid text raises UnicodeDecodeError by default.
@@ -2028,15 +2137,15 @@ Read and decode a bounded file; invalid text raises UnicodeDecodeError by defaul
 ### `Files.write_bytes`
 
 ```python
-write_bytes(self, path: 'str', data: 'bytes', *, root: 'bool' = False, timeout: 'float | None' = 30) -> 'None'
+write_bytes(self, path: 'str', data: 'bytes', *, root: 'bool' = False, timeout: 'float | None' = 300) -> 'None'
 ```
 
-Create or truncate a remote file with exact bytes; parent directories must exist.
+Create or truncate a remote file with exact bytes, creating parent directories.
 
 ### `Files.write_text`
 
 ```python
-write_text(self, path: 'str', text: 'str', *, encoding: 'str' = 'utf-8', errors: 'str' = 'strict', root: 'bool' = False, timeout: 'float | None' = 30) -> 'None'
+write_text(self, path: 'str', text: 'str', *, encoding: 'str' = 'utf-8', errors: 'str' = 'strict', root: 'bool' = False, timeout: 'float | None' = 300) -> 'None'
 ```
 
 Encode text and create or truncate a remote file.
@@ -2057,13 +2166,13 @@ download(self, remote_path: 'str', local_path: 'str | Path', *, root: 'bool' = F
 
 Stream into a private temporary file and atomically replace the local destination.
 
-A failed transfer preserves an existing destination. Parent directories must
-exist. The new file has mode 0600 on POSIX; remote permissions are not copied.
+A failed transfer preserves an existing destination. Missing parent directories
+are created. The new file has mode 0600 on POSIX; remote permissions are not copied.
 
 ### `Files.mkdir`
 
 ```python
-mkdir(self, path: 'str', *, parents: 'bool' = True, root: 'bool' = False, timeout: 'float | None' = 30) -> 'None'
+mkdir(self, path: 'str', *, parents: 'bool' = True, root: 'bool' = False, timeout: 'float | None' = 300) -> 'None'
 ```
 
 Create a directory, optionally creating its parents.
@@ -2071,7 +2180,7 @@ Create a directory, optionally creating its parents.
 ### `Files.remove`
 
 ```python
-remove(self, path: 'str', *, recursive: 'bool' = False, missing_ok: 'bool' = False, root: 'bool' = False, timeout: 'float | None' = 30) -> 'None'
+remove(self, path: 'str', *, recursive: 'bool' = False, missing_ok: 'bool' = False, root: 'bool' = False, timeout: 'float | None' = 300) -> 'None'
 ```
 
 Remove a literal file/path. Directory recursion must be requested explicitly.
